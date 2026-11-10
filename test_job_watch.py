@@ -81,11 +81,14 @@ assert not words_regex(["oman"]).search("Romania")  # whole words: Oman is not i
 # --- country rotation: Egypt every run, 4 others per run, all covered within a day
 regions = cfg["regions"]
 rest = regions["gulf"] + regions["arab"] + regions["europe"]
-runs = [countries_this_run(cfg, datetime(2026, 11, 10, h, m, tzinfo=UTC)) for h in range(24) for m in (7, 37)]
+rotate4 = {"regions": {**regions, "per_run": 4}}
+runs = [countries_this_run(rotate4, datetime(2026, 11, 10, h, m, tzinfo=UTC)) for h in range(24) for m in (7, 37)]
 assert runs[0] != runs[1], "the :07 and :37 runs of one hour must search different countries"
-assert all(r[0] == "Egypt" and len(r) == 1 + regions["per_run"] for r in runs)
+assert all(r[0] == "Egypt" and len(r) == 1 + 4 for r in runs)
 assert {c for r in runs for c in r[1:]} == set(rest)
 assert countries_this_run({"regions": {"always": ["Egypt"]}}) == ["Egypt"]  # no others configured
+everything = countries_this_run({"regions": {**regions, "per_run": 0}})
+assert everything[0] == "Egypt" and set(everything[1:]) == set(rest) and len(everything) == 1 + len(rest)
 from sources.jobspy_boards import wrong_place
 assert wrong_place("Lebanon, PA, USA") and wrong_place("Jordan, MN, United States")
 assert not wrong_place("Beirut, Beirut Governorate, Lebanon") and not wrong_place("Amman, Jordan") and not wrong_place("")

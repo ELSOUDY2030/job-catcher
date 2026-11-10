@@ -17,7 +17,7 @@ concurrency:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 15  # a stuck run must not hang forever
+    timeout-minutes: 25  # all 31 countries take ~10 min; a stuck run must still end before the next one
     env:
       STATE_KEY: ${{ secrets.STATE_KEY }}
     steps:

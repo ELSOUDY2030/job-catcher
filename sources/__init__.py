@@ -34,6 +34,8 @@ def countries_this_run(cfg, now=None):
     regions = cfg.get("regions", {})
     always = regions.get("always", [])
     rest = [c for g in GROUPS[1:] for c in regions.get(g, []) if c not in always]
+    if regions.get("per_run", 4) <= 0:  # 0 = every country, every run
+        return always + rest
     n = min(regions.get("per_run", 4), len(rest))
     now = now or datetime.now(timezone.utc)
     slot = (now.hour * 60 + now.minute) // 30  # 0..47: two runs in one hour get different countries

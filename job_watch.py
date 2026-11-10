@@ -14,6 +14,7 @@ import re
 import sys
 import time
 import tomllib
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -68,16 +69,17 @@ def is_due(section, now):
 
 
 def collect(cfg, now, ignore_schedule=False):
+    """Run every due source at the same time (each talks to a different site), keep fresh jobs."""
+    due = {name: fetch for name, fetch in SOURCES.items()
+           if cfg.get(name, {}).get("enabled", True) and (ignore_schedule or is_due(cfg.get(name, {}), now))}
+    with ThreadPoolExecutor(max_workers=max(1, len(due))) as pool:
+        futures = {name: pool.submit(fetch, cfg.get(name, {}), cfg) for name, fetch in due.items()}
     jobs = []
-    for name, fetch in SOURCES.items():
+    for name, future in futures.items():  # SOURCES order, so "first source wins" in dedupe stays stable
         section = cfg.get(name, {})
-        if not section.get("enabled", True):
-            continue
-        if not ignore_schedule and not is_due(section, now):
-            continue
         cutoff = now - timedelta(hours=section.get("hours_old", cfg["hours_old"]))
         try:
-            found = fetch(section, cfg)
+            found = future.result()
         except Exception as e:  # one broken source must not stop the others
             print(f"[!] {name}: {e}", file=sys.stderr)
             continue
@@ -178,7 +180,9 @@ def main():
     ranked = sorted(((scoring.score(job, compiled, cfg), key, job) for key, job in select_new(jobs, cfg, seen).items()),
                     key=lambda item: -item[0])  # best match first
     ranked = [item for item in ranked if item[0] >= min_score]
-    print(f"[i] {len(ranked)} new jobs")
+    cap = cfg.get("max_messages_per_run", 40)  # best first; the rest stay unsent and come back next run
+    print(f"[i] {len(ranked)} new jobs" + (f", sending the best {cap} now" if len(ranked) > cap else ""))
+    ranked = ranked[:cap]
 
     for score, key, job in ranked:
         record = make_record(key, job, score, now)

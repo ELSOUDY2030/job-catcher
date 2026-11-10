@@ -1,6 +1,7 @@
 # Job Catcher settings. Edit this file, not the code.
 
 hours_old = 24  # default: only jobs posted in the last N hours
+max_messages_per_run = 40  # best-scored first; extra new jobs wait for the next run (no flood)
 digest_hour_utc = 7  # daily summary on Telegram: 07 UTC = 9 AM Cairo (winter), 10 AM in summer time
 
 [filter]
@@ -101,16 +102,16 @@ min_score = 4              # don't send jobs below this (0 = everything). 2026-1
 
 [regions]
 # Where EVERY source looks: Egypt + Gulf + Arab countries + Europe.
-# LinkedIn / Indeed / Bayt / Workable search country by country: "always" every run, the rest
-# rotate `per_run` at a time (each country every ~7 hourly runs) so runs stay short and LinkedIn
-# doesn't block us. Company boards and remote boards keep jobs whose location names any of these.
+# LinkedIn / Indeed / Bayt / Workable search country by country: with per_run = 0, all of them
+# every run; with per_run = N, "always" every run and the rest N at a time (shorter runs, fewer 429s).
+# Company boards and remote boards keep jobs whose location names any of these.
 always = ["Egypt"]
 gulf = ["United Arab Emirates", "Saudi Arabia", "Qatar", "Kuwait", "Bahrain", "Oman"]
 arab = ["Jordan", "Lebanon", "Morocco", "Tunisia"]
 europe = ["Germany", "Netherlands", "United Kingdom", "Ireland", "France", "Spain", "Portugal", "Italy",
           "Belgium", "Luxembourg", "Sweden", "Denmark", "Finland", "Norway", "Switzerland", "Austria",
           "Poland", "Czech Republic", "Romania", "Greece"]
-per_run = 4
+per_run = 0  # 0 = ALL countries every run (~10 min/run). 4 = rotate 4 per run (each country every ~4h, ~4 min/run)
 # Other words in a job's location that mean "one of our places" (whole words, any case).
 # Not plain "remote": it let in "Almaty, Kazakhstan · remote".
 place_words = [
