@@ -1,6 +1,6 @@
 # Job Watch — وظايف مصر على Telegram
 
-بيدور كل ساعة على وظايف AI / ML / Data جديدة (آخر 24 ساعة) في **مصر + الخليج + الدول العربية + أوروبا** (31 دولة، `[regions]` في `config.toml`)،
+بيدور **كل نص ساعة** على وظايف AI / ML / Data جديدة (آخر 24 ساعة) في **مصر + الخليج + الدول العربية + أوروبا** (31 دولة، `[regions]` في `config.toml`)،
 وأي وظيفة جديدة بتوصلك رسالة على Telegram فيها اللينك علطول. نفس الوظيفة على أكتر من موقع = رسالة واحدة.
 
 **المصادر:**
@@ -23,12 +23,15 @@
 - `PLAN.md` — الخطة الكاملة والمصادر والمراحل.
 - `scoring.py` — درجة المطابقة (الكلمات والأوزان في `[score.keywords]` في `config.toml`).
 - `telegram_bot.py` — الإرسال، الأزرار، الملخص اليومي.
-- `seen_jobs.json` — كل وظيفة اتبعتت + حالتها (new / applied / ignored) + الدرجة. **ده كمان الملف اللي `job-hunter` يقرا منه.**
-- `state.json` — مكان القراية في Telegram + آخر يوم اتبعت فيه الملخص.
+- **ذاكرة البوت** (مش موجودة في الـ repo علشان هو Public):
+  - `seen_jobs.json`: كل وظيفة اتبعتت + حالتها (new / applied / ignored) + الدرجة. **ده الملف اللي `job-hunter` يقرا منه.**
+  - `state.json`: مكان القراية في Telegram + آخر يوم اتبعت فيه الملخص.
+  - الاتنين محفوظين **متشفّرين (AES-256)** في ملف `state.enc` على فرع `state`. المفتاح موجود كـ secret `STATE_KEY` في GitHub،
+    ونسخة منه على جهازك في `.state_key`، والملف ده متجاهَل ومبيترفعش.
 - `config.toml` — **كل الإعدادات**: الكلمات، الاستبعاد، المصادر، كل مصدر بيشتغل كل قد إيه.
 - `job_watch.py` — بيجمع من المصادر ← يفلتر ← يشيل المكرر ← يبعت.
 - `sources/` — ملف لكل مصدر (LinkedIn/Indeed/Bayt عن طريق [JobSpy](../references/JobSpy)).
-- `.github/workflows/job_watch.yml` — الـ cron اللي بيشغله كل ساعة.
+- `.github/workflows/job_watch.yml` — الـ cron اللي بيشغله كل نص ساعة (`7,37 * * * *`).
 - `../references/` — الريبوهات اللي اتعلمنا منها (برا المشروع، مش بتترفع).
 
 > Wuzzuf مش موجود دلوقتي: الموقع عليه حماية Cloudflare بتمنع السكربتات. البديل: فعّل Job Alerts من حسابك على Wuzzuf بالإيميل.
@@ -39,8 +42,9 @@
 2. **هات الـ chat id:** ابعت أي رسالة للبوت بتاعك، وافتح
    `https://api.telegram.org/bot<TOKEN>/getUpdates` ← هتلاقي `"chat":{"id": 123456789`.
 3. **اعمل repo على GitHub** وارفع الفولدر ده.
-   - **Public:** دقايق Actions مجانية من غير حد، وتقدر تشغله كل ساعة. بس أي حد هيقدر يشوف `seen_jobs.json`، يعني الوظايف اللي قدمت عليها.
-   - **Private:** ليك 2000 دقيقة في الشهر، والـ run بياخد ~3 دقايق، فغيّر الـ cron لكل ساعتين (`7 */2 * * *`).
+   - **Public (الحالي):** دقايق Actions مجانية من غير حد، فبيشتغل كل نص ساعة. الكود ظاهر للناس، بس الذاكرة متشفّرة.
+   - **Private:** ليك 2000 دقيقة في الشهر بس، والـ run بياخد ~4 دقايق، فلازم الـ cron يبقى كل ساعتين (`7 */2 * * *`).
+   - مفتاح التشفير: `python -c "import secrets;print(secrets.token_urlsafe(32))" > .state_key` وبعدين `gh secret set STATE_KEY < .state_key`.
      ده هيستهلك حوالي 1200 دقيقة في الشهر.
 4. في الـ repo: **Settings ← Secrets and variables ← Actions ← New repository secret**:
    - `TELEGRAM_BOT_TOKEN`
@@ -73,8 +77,11 @@ python job_watch.py        # من غير token = بيطبع الوظايف بس 
 - **✅ / ❌:** دوس على الزرار، والضغطة بتتسجل في أول run بعدها (خلال ساعة)، لأن مفيش سيرفر شغال طول الوقت.
   الـ spinner ممكن يفضل يلف شوية، وده عادي. بعد التسجيل الزرار بيتغير لـ "✅ قدمت · تراجع ↩️".
 - **الملخص اليومي:** `digest_hour_utc` في `config.toml` (7 UTC = 9 الصبح بتوقيت القاهرة في الشتا).
-- **job-hunter:** اعمل `git pull`، وقول للسكيل:
-  "قدّم على الوظايف اللي `status = new` و `score` ≥ 7 في `مشروع/job-catcher/seen_jobs.json`".
+- **job-hunter:** هات آخر ذاكرة على جهازك (من جوا فولدر `job-catcher`):
+  ```bash
+  git fetch origin state && git show origin/state:state.enc | openssl enc -d -aes-256-cbc -pbkdf2 -pass file:.state_key | tar xzf -
+  ```
+  وبعدين قول للسكيل: "قدّم على الوظايف اللي `status = new` و `score` ≥ 7 في `مشروع/job-catcher/seen_jobs.json`".
 
 ## تعديل البحث
 
