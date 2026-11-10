@@ -8,6 +8,10 @@ digest_hour_utc = 7  # daily summary on Telegram: 07 UTC = 9 AM Cairo (winter), 
 auto_min_score = 8   # jobs scoring this or more are queued automatically (🤖); the rest get a 🚀 button
 per_cycle = 4        # max applications per 30-minute PC cycle (= 8/hour, the job-hunter skill's pace)
 claude_review = true # answers the rule check can't verify are reviewed by `claude -p` before Submit
+# last check on the PC before Antigravity starts: queued jobs whose title has one of these are skipped
+# (not plain "stage": it would also skip "early-stage startup" titles)
+skip_titles = ["intern", "internship", "stage -", "stage ingénieur", "stage data", "stagiaire", "bac+5",
+               "alternance", "praktikum", "werkstudent", "prácticas", "becario", "tirocinio", "trainee"]
 
 [filter]
 # The job TITLE must contain one of these (whole word, any case).
@@ -101,8 +105,18 @@ min_score = 4              # don't send jobs below this (0 = everything). 2026-1
 "full stack" = -1
 "product manager" = -2
 "product owner" = -2
-"intern" = -2
-"internship" = -2
+"intern" = -4
+"internship" = -4
+# internships / apprenticeships in other languages (they reached the auto-apply queue at ⭐ 8)
+"stage ingénieur" = -4
+"stagiaire" = -4
+"bac+5" = -4
+"alternance" = -4
+"praktikum" = -4
+"werkstudent" = -4
+"prácticas" = -4
+"becario" = -4
+"tirocinio" = -4
 "sales" = -2
 
 [regions]

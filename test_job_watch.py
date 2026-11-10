@@ -307,6 +307,14 @@ assert review.parse('Sure!\n{"problems": []}\nDone') == []
 assert review.parse('{"problems": [{"q": "s", "a": "1", "why": "x"}]}')[0]["why"] == "x"
 assert review.parse("no json here") is None and review.parse('{"other": 1}') is None
 import pc_runner
+assert make_job("Principal Data Scientist &#8211; Warsaw", "A &amp; B", "", "u", None, "t")["title"] == \
+       "Principal Data Scientist – Warsaw"
+skip = words_regex(cfg["apply"]["skip_titles"])
+for t in ["CS27 BAC+5 - Stage - Data Scientist (H/F)", "Stage Ingénieur Data/IA", "AI Intern", "Werkstudent ML"]:
+    assert skip.search(t), t
+for t in ["Founding AI Engineer (early-stage startup)", "Senior ML Engineer", "Internal Tools AI Engineer"]:
+    assert not skip.search(t), t
+assert sc("CS27 BAC+5 - Stage - Data Scientist (H/F)") < cfg["apply"]["auto_min_score"]
 qa = pc_runner.qa_text([{"q": f"Q{i} <b>", "a": "A"} for i in range(20)], limit=15)
 assert qa.count("•") == 15 and "+5" in qa and "&lt;b&gt;" in qa
 print("ok")

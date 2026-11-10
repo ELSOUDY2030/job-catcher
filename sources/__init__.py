@@ -84,8 +84,8 @@ def plain(*parts, limit=3000):
 
 def make_job(title, company, location, url, posted, source, text=""):
     return {
-        "title": clean(title),
-        "company": clean(company),
+        "title": html.unescape(clean(title)),  # LinkedIn sends "&#8211;" etc. in some titles
+        "company": html.unescape(clean(company)),
         "location": clean(location),
         "url": clean(url),
         "posted": parse_time(posted),

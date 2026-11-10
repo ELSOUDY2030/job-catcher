@@ -37,7 +37,7 @@ sys.path[:0] = [str(ROOT), str(HERE)]
 import audit                                    # noqa: E402
 import review                                   # noqa: E402
 from prompts import FILL, SUBMIT                # noqa: E402
-from sources import jobspy_boards, wuzzuf       # noqa: E402
+from sources import jobspy_boards, words_regex, wuzzuf  # noqa: E402
 
 RECEIPTS = ROOT / "receipts"
 LOG = RECEIPTS / "runner.log"
@@ -272,10 +272,20 @@ def main():
     save_pc(pc)  # GitHub gets the new Wuzzuf/Bayt jobs even if applying fails below
 
     seen = load_seen()
-    queue = sorted((r for r in seen.values() if r.get("status") == "queued" and r["id"] not in results),
-                   key=lambda r: -r.get("score", 0))[: cfg.get("apply", {}).get("per_cycle", 4)]
+    skip = words_regex(cfg.get("apply", {}).get("skip_titles"))
+    queue = []
+    for rec in sorted((r for r in seen.values() if r.get("status") == "queued" and r["id"] not in results),
+                      key=lambda r: -r.get("score", 0)):
+        if skip and skip.search(rec["title"]):  # internships etc.: never worth an application
+            pc["results"][rec["id"]] = {"at": datetime.now(timezone.utc).isoformat(timespec="minutes"),
+                                        "status": "skipped", "note": "title is in [apply] skip_titles"}
+            log(f"[skipped] {rec['title']} | {rec['company']} (skip_titles)")
+        else:
+            queue.append(rec)
+    queue = queue[: cfg.get("apply", {}).get("per_cycle", 4)]
     if not queue:
         log("[i] nothing queued")
+        save_pc(pc)  # skipped ones still go back to GitHub
         return
     problems = ready_to_apply()
     if problems:
@@ -285,7 +295,7 @@ def main():
             notify(env, "⚠️ <b>جهازك مش قادر يقدّم دلوقتي</b>\n" + "\n".join(f"• {html.escape(p)}" for p in problems)
                    + f"\n{len(queue)} وظيفة مستنية في الطابور.")
             pc["warned"] = today
-            save_pc(pc)
+        save_pc(pc)
         return
     rules = audit.load_rules()
     for rec in queue:
