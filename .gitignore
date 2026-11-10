@@ -1,0 +1,6 @@
+references/
+__pycache__/
+.venv/
+.state_key
+seen_jobs.json
+state.json

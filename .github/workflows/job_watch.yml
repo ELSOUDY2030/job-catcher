@@ -1,0 +1,72 @@
+name: Job Watch
+
+on:
+  schedule:
+    # every 30 minutes (UTC), off the top of the hour (GitHub delays runs at :00).
+    # Public repo: Actions minutes are free and unlimited.
+    - cron: "7,37 * * * *"
+  workflow_dispatch: {}   # "Run workflow" button for manual tests
+
+permissions:
+  contents: write  # push the encrypted memory to the "state" branch (+ keepalive)
+
+concurrency:
+  group: job-watch
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15  # a stuck run must not hang forever
+    env:
+      STATE_KEY: ${{ secrets.STATE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      # The memory (sent jobs + their status, Telegram position) is private: it lives
+      # AES-encrypted on the "state" branch, never as plain JSON in this public repo.
+      - name: Load memory
+        run: |
+          if git fetch --quiet --depth 1 origin state 2>/dev/null; then
+            git show FETCH_HEAD:state.enc | openssl enc -d -aes-256-cbc -pbkdf2 -pass env:STATE_KEY | tar xzf -
+            echo "memory loaded"
+          else
+            echo "no memory yet (first run)"
+          fi
+
+      - name: Check for new jobs
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}            # optional: Wuzzuf + LinkedIn alert emails
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          PYTHONUTF8: "1"
+        run: python job_watch.py
+
+      - name: Save memory
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tar czf - seen_jobs.json state.json | openssl enc -aes-256-cbc -pbkdf2 -salt -pass env:STATE_KEY -out "$RUNNER_TEMP/state.enc"
+          cd "$RUNNER_TEMP" && rm -rf statebranch && mkdir statebranch && cd statebranch
+          git init --quiet -b state && cp ../state.enc . && git add state.enc
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit --quiet -m "memory [skip ci]"
+          # one commit, force-pushed: the branch never grows a history
+          git push --quiet --force "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" state
+
+      # GitHub turns off schedules in public repos after 60 days without activity: nudge main once a month.
+      - name: Keepalive
+        run: |
+          if [ $(( $(date +%s) - $(git log -1 --format=%ct) )) -gt $(( 50 * 86400 )) ]; then
+            git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit --allow-empty --quiet -m "keepalive [skip ci]"
+            git push --quiet
+          fi

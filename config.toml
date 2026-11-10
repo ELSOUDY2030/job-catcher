@@ -1,0 +1,193 @@
+# Job Catcher settings. Edit this file, not the code.
+
+hours_old = 24  # default: only jobs posted in the last N hours
+digest_hour_utc = 7  # daily summary on Telegram: 07 UTC = 9 AM Cairo (winter), 10 AM in summer time
+
+[filter]
+# The job TITLE must contain one of these (whole word, any case).
+include = [
+  "ai", "ml", "mlops", "llm", "llms", "nlp", "genai", "generative",
+  "machine learning", "deep learning", "data scientist", "data science",
+  "computer vision", "artificial intelligence", "ذكاء اصطناعي",
+]
+# ...and none of these. More examples: "intern", "internship", "sales"
+exclude = ["marketing", "media buying"]
+
+[score]
+# Match score 0-10 shown as ⭐ on every job. Built from candidate_facts.md (approved skills = +,
+# "DO NOT CLAIM" list = -). Title hit counts double, description hit once.
+full_marks = 10            # raw points that make a 10/10
+description_cap = 4        # a description can add at most this (long ones mention everything)
+my_years = 5               # jobs asking for more than my_years + 1 years lose points
+too_many_years_penalty = 4
+min_score = 0              # don't send jobs below this (0 = send everything that passes [filter])
+
+[score.keywords]
+# core fit
+"llm" = 4
+"llms" = 4
+"ai" = 1
+"artificial intelligence" = 1
+"data science" = 2
+"rag" = 3
+"generative ai" = 3
+"genai" = 3
+"agents" = 2
+"agentic" = 2
+"ai agents" = 2
+"computer vision" = 3
+"machine learning" = 2
+"ml" = 2
+"ai engineer" = 2
+"data scientist" = 2
+"nlp" = 2
+"arabic" = 2
+"ocr" = 2
+"yolo" = 2
+"object detection" = 2
+"segmentation" = 1
+"face recognition" = 2
+"deep learning" = 1
+# tools from the CV
+"pytorch" = 2
+"tensorflow" = 1
+"hugging face" = 2
+"transformers" = 1
+"langchain" = 2
+"langgraph" = 2
+"openai" = 1
+"vllm" = 2
+"fastapi" = 2
+"python" = 1
+"opencv" = 2
+"mlflow" = 1
+"mlops" = 1
+"docker" = 1
+"kubernetes" = 1
+"aws" = 1
+"bedrock" = 1
+"faiss" = 1
+"pinecone" = 1
+"pgvector" = 1
+"vector database" = 1
+"satellite" = 2
+"remote sensing" = 2
+"gis" = 1
+"time series" = 1
+# not in the CV (DO NOT CLAIM) or not a fit
+"java" = -2
+".net" = -2
+"react" = -1
+"node.js" = -1
+"salesforce" = -3
+"sap" = -3
+"power bi" = -2
+"tableau" = -2
+"databricks" = -1
+"snowflake" = -1
+"kafka" = -1
+"terraform" = -1
+"head of" = -3
+"director" = -3
+"team lead" = -2
+"people management" = -2
+"full stack" = -1
+"product manager" = -2
+"product owner" = -2
+"intern" = -2
+"internship" = -2
+"sales" = -2
+
+[regions]
+# Where EVERY source looks: Egypt + Gulf + Arab countries + Europe.
+# LinkedIn / Indeed / Bayt / Workable search country by country: "always" every run, the rest
+# rotate `per_run` at a time (each country every ~7 hourly runs) so runs stay short and LinkedIn
+# doesn't block us. Company boards and remote boards keep jobs whose location names any of these.
+always = ["Egypt"]
+gulf = ["United Arab Emirates", "Saudi Arabia", "Qatar", "Kuwait", "Bahrain", "Oman"]
+arab = ["Jordan", "Lebanon", "Morocco", "Tunisia"]
+europe = ["Germany", "Netherlands", "United Kingdom", "Ireland", "France", "Spain", "Portugal", "Italy",
+          "Belgium", "Luxembourg", "Sweden", "Denmark", "Finland", "Norway", "Switzerland", "Austria",
+          "Poland", "Czech Republic", "Romania", "Greece"]
+per_run = 4
+# Other words in a job's location that mean "one of our places" (whole words, any case).
+# Not plain "remote": it let in "Almaty, Kazakhstan · remote".
+place_words = [
+  "worldwide", "anywhere", "global", "emea", "mena", "middle east", "gulf", "gcc", "africa", "europe", "eu",
+  "uae", "ksa", "uk", "cairo", "giza", "alexandria", "maadi",
+  "dubai", "abu dhabi", "sharjah", "riyadh", "jeddah", "dammam", "khobar", "doha", "kuwait city", "manama",
+  "muscat", "amman", "beirut", "casablanca", "rabat", "tunis",
+  "berlin", "munich", "hamburg", "frankfurt", "cologne", "amsterdam", "rotterdam", "eindhoven", "london",
+  "manchester", "cambridge", "dublin", "paris", "lyon", "madrid", "barcelona", "valencia", "lisbon", "porto",
+  "milan", "rome", "brussels", "stockholm", "gothenburg", "copenhagen", "helsinki", "oslo", "zurich",
+  "geneva", "vienna", "warsaw", "krakow", "prague", "bucharest", "athens",
+]
+
+# ---- Sources ----
+# Every source accepts: enabled, every_hours (run at UTC hours divisible by it), hours_old.
+
+[jobspy]  # LinkedIn + Indeed + Bayt, every [regions] country (rotating)
+sites = ["linkedin", "indeed", "bayt"]
+terms = ["AI Engineer", "Machine Learning", "Data Scientist", "Computer Vision", "LLM"]  # one OR query
+bayt_terms = ["AI engineer", "machine learning", "data scientist"]  # Bayt can't do OR: one call each
+results_wanted = 25
+
+[wuzzuf]  # public category pages (Egypt + Saudi), allowed by robots.txt. Page 1 = ~20 newest jobs each.
+# Wuzzuf returns 429 if we go fast: 3s between pages, every 2 hours, stop at the first 429.
+# Dropped as overlap/noise: Data-Scientist (= Data-Science), IT-Software-Development (too broad).
+every_hours = 2
+pause_seconds = 3
+pages = [
+  "https://wuzzuf.net/a/AI-Jobs-in-Egypt",
+  "https://wuzzuf.net/a/Machine-Learning-Jobs-in-Egypt",
+  "https://wuzzuf.net/a/Data-Science-Jobs-in-Egypt",
+  "https://wuzzuf.net/a/Computer-Vision-Jobs-in-Egypt",
+  "https://wuzzuf.net/a/Deep-Learning-Jobs-in-Egypt",
+  "https://wuzzuf.net/a/NLP-Jobs-in-Egypt",
+  "https://wuzzuf.net/a/Generative-AI-Jobs-in-Egypt",
+  "https://wuzzuf.net/a/LLM-Jobs-in-Egypt",
+  "https://wuzzuf.net/saudi/a/AI-Jobs-in-Saudi-Arabia",
+  "https://wuzzuf.net/saudi/a/Machine-Learning-Jobs-in-Saudi-Arabia",
+  "https://wuzzuf.net/saudi/a/Data-Science-Jobs-in-Saudi-Arabia",
+]
+
+[workable]  # all companies hiring through Workable, every [regions] country (rotating)
+terms = ["AI Engineer", "Machine Learning", "Data Scientist", "Computer Vision", "LLM"]  # one OR query
+max_pages = 3
+
+[remotive]  # asks for max 4 requests/day and shows jobs 24h late
+every_hours = 6
+hours_old = 48
+
+[remoteok]
+
+[himalayas]
+terms = ["machine learning", "AI engineer", "data scientist"]
+
+[jobicy]
+
+[arbeitnow]  # Germany / Europe jobs (often with visa / relocation)
+
+[ats]  # company career pages; jobs kept when their location is in [regions].
+# Egypt/MENA set verified 2026-11-08; Europe/Gulf set from applications_log.md verified 2026-11-10.
+greenhouse = ["careem", "cognite", "scaleai", "tamara", "turing", "engelhart", "sumup"]
+lever = ["soum", "pigment"]
+ashby = ["thndr", "ziina", "specright", "chatbase", "mexdigital", "mistral.ai", "openai", "cohere", "airapps",
+         "photoroom", "tebi", "labhouse", "iwoca.co.uk", "happyscribe.com"]
+smartrecruiters = ["brimore"]
+recruitee = ["synapseanalytics", "unifonic", "imnoo", "helloprint"]
+breezy = ["almentor"]
+bamboohr = ["bosta", "dsquares", "flat6labs"]  # no posting dates: new = first time seen
+pinpoint = ["tabby", "indrive"]                # no posting dates: new = first time seen
+
+[telegram_channels]  # public channels only (t.me/s/<name>). Checked active 2026-11-08.
+channels = ["the_developer_guide", "cs_internships", "remotejobss"]
+# a post counts as a job only if it has one of these (channels also post news and courses)
+must_have = ["hiring", "job", "jobs", "position", "vacancy", "apply", "opportunity", "internship",
+             "وظيفة", "وظائف", "مطلوب", "فرصة عمل", "تدريب", "للتقديم"]
+
+[email_alerts]  # backup: Wuzzuf + LinkedIn alert emails from Gmail. Needs GMAIL_ADDRESS + GMAIL_APP_PASSWORD.
+senders = ["wuzzuf.net", "jobalerts-noreply@linkedin.com"]
+days_back = 2     # read emails from the last N days (re-reading is harmless: seen jobs are skipped)
+hours_old = 168   # Wuzzuf weekly emails list jobs up to ~6 days old
+folder = "INBOX"
