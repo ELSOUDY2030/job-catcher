@@ -20,7 +20,8 @@ full_marks = 10            # raw points that make a 10/10
 description_cap = 4        # a description can add at most this (long ones mention everything)
 my_years = 5               # jobs asking for more than my_years + 1 years lose points
 too_many_years_penalty = 4
-min_score = 0              # don't send jobs below this (0 = send everything that passes [filter])
+min_score = 4              # don't send jobs below this (0 = everything). 2026-11-10: 63/238 sent jobs scored 0-3
+                           # (mostly just "AI" in a title), so 4 cuts that noise.
 
 [score.keywords]
 # core fit

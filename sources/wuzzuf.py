@@ -87,8 +87,10 @@ def fetch(section, cfg):
             with opener.open(url, timeout=20) as resp:
                 page = resp.read().decode("utf-8", "ignore")
         except urllib.error.HTTPError as e:
-            if e.code == 429:  # Wuzzuf says slow down: stop now, the rest waits for the next run
-                print(f"[!] wuzzuf: 429 at {url}, skipping the remaining pages this run", file=sys.stderr)
+            # 429 = slow down; 403 = this IP is blocked (GitHub's servers get 403, a home PC doesn't).
+            # Either way the other pages will fail too: stop, try again next run.
+            if e.code in (403, 429):
+                print(f"[!] wuzzuf: {e.code} at {url}, skipping the remaining pages this run", file=sys.stderr)
                 break
             print(f"[!] wuzzuf {url}: {e}", file=sys.stderr)
             continue
