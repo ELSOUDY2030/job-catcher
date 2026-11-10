@@ -20,8 +20,8 @@ from pathlib import Path
 
 import scoring
 import telegram_bot
-from sources import (ats, email_alerts, jobspy_boards, remote_boards, telegram_channels, workable, words_regex,
-                     wuzzuf)
+from sources import (ats, email_alerts, jobspy_boards, pc_feed, remote_boards, telegram_channels, workable,
+                     words_regex, wuzzuf)
 
 HERE = Path(__file__).parent
 CONFIG_FILE = HERE / "config.toml"
@@ -32,7 +32,9 @@ KEEP_DAYS = 30  # forget a job this long after it was last listed anywhere
 # config.toml section name -> fetch(section, cfg) -> list of jobs
 SOURCES = {
     "jobspy": jobspy_boards.fetch,
-    "wuzzuf": wuzzuf.fetch,
+    "wuzzuf": wuzzuf.fetch,        # runs_on = "pc": skipped here, arrives through pc_feed
+    "bayt": jobspy_boards.fetch_bayt,  # runs_on = "pc" too
+    "pc_feed": pc_feed.fetch,
     "workable": workable.fetch,
     "remotive": remote_boards.remotive,
     "remoteok": remote_boards.remoteok,
@@ -71,7 +73,8 @@ def is_due(section, now):
 def collect(cfg, now, ignore_schedule=False):
     """Run every due source at the same time (each talks to a different site), keep fresh jobs."""
     due = {name: fetch for name, fetch in SOURCES.items()
-           if cfg.get(name, {}).get("enabled", True) and (ignore_schedule or is_due(cfg.get(name, {}), now))}
+           if cfg.get(name, {}).get("enabled", True) and cfg.get(name, {}).get("runs_on") != "pc"
+           and (ignore_schedule or is_due(cfg.get(name, {}), now))}
     with ThreadPoolExecutor(max_workers=max(1, len(due))) as pool:
         futures = {name: pool.submit(fetch, cfg.get(name, {}), cfg) for name, fetch in due.items()}
     jobs = []
@@ -121,7 +124,8 @@ def prune(seen, today):
     return {key: rec for key, rec in seen.items() if rec["last_seen"] >= cutoff}
 
 
-def make_record(key, job, score, now):
+def make_record(key, job, score, now, auto_min_score=None):
+    auto = auto_min_score is not None and score >= auto_min_score
     return {
         "id": short_id(key),
         "title": job["title"],
@@ -130,13 +134,27 @@ def make_record(key, job, score, now):
         "url": job["url"],
         "source": job["source"],
         "score": score,
-        "status": "new",  # new / applied / ignored (Telegram buttons)
+        # new / queued (🤖 auto or 🚀) / applied / ignored / needs_you / blocked / skipped
+        "status": "queued" if auto else "new",
+        "auto": auto,
         "first_seen": now.isoformat(timespec="minutes"),
         "last_seen": now.date().isoformat(),
     }
 
 
-def format_job(job, score=None):
+def apply_pc_results(seen, pc):
+    """Your PC reports what happened to queued jobs (applied / needs_you / blocked / skipped)."""
+    by_id = {rec["id"]: rec for rec in seen.values()}
+    changed = 0
+    for job_id, result in (pc.get("results") or {}).items():
+        rec = by_id.get(job_id)
+        if rec and rec.get("status") == "queued":  # a later manual ✅/❌ from you always wins
+            rec.update(status=result["status"], status_at=result.get("at", ""), note=result.get("note", ""))
+            changed += 1
+    return changed
+
+
+def format_job(job, score=None, queued=False):
     e = lambda key: html.escape(job.get(key) or "")
     posted = f"  ⏱ {job['posted']:%Y-%m-%d}" if job.get("posted") else ""
     stars = f"⭐ {score}/10  " if score is not None else ""
@@ -145,6 +163,7 @@ def format_job(job, score=None):
         f"🏢 {e('company')}  📍 {e('location')}",
         f"{stars}🌐 {e('source')}{posted}",
         e("note"),  # optional extra a source adds (Wuzzuf: applicant count)
+        "🤖 هيتقدم عليها أوتوماتيك من جهازك" if queued else "",
         job["url"],
     ]
     return "\n".join(line for line in lines if line.strip())
@@ -168,6 +187,7 @@ def main():
             telegram_bot.sync_presses(token, chat_id, state, seen, now)
         except Exception as e:
             print(f"[!] telegram buttons: {e}", file=sys.stderr)
+    print(f"[i] pc: {apply_pc_results(seen, pc_feed.load(cfg.get('pc_feed')))} application results from your PC")
 
     jobs = collect(cfg, now, ignore_schedule=dry_run)
     for job in jobs:  # still listed -> remember longer (undated jobs would come back after KEEP_DAYS)
@@ -184,15 +204,16 @@ def main():
     print(f"[i] {len(ranked)} new jobs" + (f", sending the best {cap} now" if len(ranked) > cap else ""))
     ranked = ranked[:cap]
 
+    auto_min = cfg.get("apply", {}).get("auto_min_score")
     for score, key, job in ranked:
-        record = make_record(key, job, score, now)
-        text = format_job(job, score)
+        record = make_record(key, job, score, now, auto_min)
+        text = format_job(job, score, queued=record["auto"])
         if dry_run:
             print(text, end="\n\n")
             seen[key] = record
             continue
         try:
-            record["msg"] = telegram_bot.send(token, chat_id, text, telegram_bot.buttons(record["id"]))
+            record["msg"] = telegram_bot.send(token, chat_id, text, telegram_bot.buttons(record["id"], record["status"]))
         except Exception as e:  # not marked seen, so it is retried next run
             print(f"[!] send failed for {job['url']}: {e}", file=sys.stderr)
             continue

@@ -8,8 +8,9 @@ import json
 import urllib.request
 from datetime import timedelta
 
-ACTIONS = {"a": "applied", "x": "ignored", "u": "new"}  # callback_data prefix -> status
-LABELS = {"applied": "✅ قدمت", "ignored": "❌ مش مهتم"}
+ACTIONS = {"a": "applied", "x": "ignored", "u": "new", "q": "queued"}  # callback_data prefix -> status
+LABELS = {"applied": "✅ قدمت", "ignored": "❌ مش مهتم", "queued": "🚀 في الطابور", "needs_you": "✋ محتاجك",
+          "blocked": "⛔ اتوقف", "skipped": "⏭ اتساب"}
 
 
 def call(token, method, **params):
@@ -24,9 +25,17 @@ def call(token, method, **params):
 
 def buttons(job_id, status="new"):
     if status == "new":
-        return {"inline_keyboard": [[{"text": LABELS["applied"], "callback_data": f"a:{job_id}"},
-                                     {"text": LABELS["ignored"], "callback_data": f"x:{job_id}"}]]}
-    return {"inline_keyboard": [[{"text": f"{LABELS[status]} · تراجع ↩️", "callback_data": f"u:{job_id}"}]]}
+        return {"inline_keyboard": [
+            [{"text": LABELS["applied"], "callback_data": f"a:{job_id}"},
+             {"text": LABELS["ignored"], "callback_data": f"x:{job_id}"}],
+            [{"text": "🚀 قدّم لي", "callback_data": f"q:{job_id}"}],  # your PC applies (pc/pc_runner.py)
+        ]}
+    if status == "queued":
+        return {"inline_keyboard": [
+            [{"text": "⏸ ماتقدّمش", "callback_data": f"u:{job_id}"},
+             {"text": "✅ قدمت بنفسي", "callback_data": f"a:{job_id}"}],
+        ]}
+    return {"inline_keyboard": [[{"text": f"{LABELS.get(status, status)} · تراجع ↩️", "callback_data": f"u:{job_id}"}]]}
 
 
 def send(token, chat_id, text, markup=None):

@@ -40,6 +40,11 @@ jobs:
           else
             echo "no memory yet (first run)"
           fi
+          # what your PC sent back (Wuzzuf/Bayt jobs + application results), same key
+          if git fetch --quiet --depth 1 origin pc 2>/dev/null; then
+            git show FETCH_HEAD:pc.enc | openssl enc -d -aes-256-cbc -pbkdf2 -pass env:STATE_KEY > pc.json
+            echo "pc report loaded"
+          fi
 
       - name: Check for new jobs
         env:

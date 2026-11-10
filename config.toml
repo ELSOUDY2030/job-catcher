@@ -4,6 +4,11 @@ hours_old = 24  # default: only jobs posted in the last N hours
 max_messages_per_run = 40  # best-scored first; extra new jobs wait for the next run (no flood)
 digest_hour_utc = 7  # daily summary on Telegram: 07 UTC = 9 AM Cairo (winter), 10 AM in summer time
 
+[apply]  # done on YOUR PC by pc/pc_runner.py (Antigravity + the job-hunter skill), every 30 minutes
+auto_min_score = 8   # jobs scoring this or more are queued automatically (🤖); the rest get a 🚀 button
+per_cycle = 4        # max applications per 30-minute PC cycle (= 8/hour, the job-hunter skill's pace)
+claude_review = true # answers the rule check can't verify are reviewed by `claude -p` before Submit
+
 [filter]
 # The job TITLE must contain one of these (whole word, any case).
 include = [
@@ -128,16 +133,26 @@ place_words = [
 # ---- Sources ----
 # Every source accepts: enabled, every_hours (run at UTC hours divisible by it), hours_old.
 
-[jobspy]  # LinkedIn + Indeed + Bayt, every [regions] country (rotating)
-sites = ["linkedin", "indeed", "bayt"]
+[jobspy]  # LinkedIn + Indeed, every [regions] country
+sites = ["linkedin", "indeed"]
 terms = ["AI Engineer", "Machine Learning", "Data Scientist", "Computer Vision", "LLM"]  # one OR query
-bayt_terms = ["AI engineer", "machine learning", "data scientist"]  # Bayt can't do OR: one call each
 results_wanted = 25
 
+# Sources with runs_on = "pc" answer 403 to GitHub's servers: your PC scans them (pc/pc_runner.py)
+# and GitHub reads what it found through [pc_feed].
+[bayt]  # Egypt + Gulf + Arab countries. Bayt can't do OR: one call per term.
+runs_on = "pc"
+terms = ["AI engineer", "machine learning", "data scientist"]
+results_wanted = 25
+
+[pc_feed]  # jobs your PC found (Wuzzuf + Bayt), delivered via the encrypted "pc" branch
+file = "pc.json"
+hours_old = 48  # a PC that was off for a while still delivers yesterday's jobs
+
 [wuzzuf]  # public category pages (Egypt + Saudi), allowed by robots.txt. Page 1 = ~20 newest jobs each.
-# Wuzzuf returns 429 if we go fast: 3s between pages, every 2 hours, stop at the first 429.
+# GitHub's servers get 403, so your PC scans it. 429 if we go fast: 3s between pages, stop at the first 429/403.
 # Dropped as overlap/noise: Data-Scientist (= Data-Science), IT-Software-Development (too broad).
-every_hours = 2
+runs_on = "pc"
 pause_seconds = 3
 pages = [
   "https://wuzzuf.net/a/AI-Jobs-in-Egypt",

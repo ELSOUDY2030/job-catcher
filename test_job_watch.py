@@ -260,4 +260,53 @@ assert wz["Data Scientist"]["company"] == "Confidential Company" and wz["Data Sc
 assert wz["Data Scientist"]["url"] == "https://wuzzuf.net/jobs/p/xyz-data-scientist" and "note" not in wz["Data Scientist"]
 assert _extract_jobs_from_html("<html>no state</html>") == [] and _parse_posted_at(None) is None
 assert "👥 25 متقدم" in format_job(top, 9)
+
+# --- auto-apply queue: ⭐ >= auto_min_score is queued (🤖), the rest get a 🚀 button
+from job_watch import apply_pc_results
+now2 = datetime(2026, 11, 10, 20, 7, tzinfo=UTC)
+hi, lo = make_job("Senior LLM Engineer", "Acme", "", "u1", None, "t"), make_job("AI Tester", "Beta", "", "u2", None, "t")
+rec_hi, rec_lo = make_record(job_key(hi), hi, 9, now2, 8), make_record(job_key(lo), lo, 5, now2, 8)
+assert rec_hi["status"] == "queued" and rec_hi["auto"] and rec_lo["status"] == "new" and not rec_lo["auto"]
+assert make_record(job_key(hi), hi, 9, now2)["status"] == "new"  # no [apply] -> nothing automatic
+assert "🤖" in format_job(hi, 9, queued=True) and "🤖" not in format_job(lo, 5)
+rows = telegram_bot.buttons(rec_lo["id"], "new")["inline_keyboard"]
+assert rows[1][0]["callback_data"] == f"q:{rec_lo['id']}"                      # 🚀 = queue it
+assert [b["callback_data"][0] for b in telegram_bot.buttons(rec_hi["id"], "queued")["inline_keyboard"][0]] == ["u", "a"]
+seen2 = {job_key(hi): rec_hi, job_key(lo): rec_lo}
+telegram_bot.apply_presses([press(f"q:{rec_lo['id']}")], 42, seen2, now2)
+assert rec_lo["status"] == "queued"
+# the PC's results land only on queued jobs; a manual ✅ from you is never overwritten
+rec_lo["status"] = "applied"
+pc_report = {"results": {rec_hi["id"]: {"status": "applied", "at": "2026-11-10T20:30", "note": "Thanks!"},
+                         rec_lo["id"]: {"status": "blocked", "at": "2026-11-10T20:30"}, "zzz": {"status": "applied"}}}
+assert apply_pc_results(seen2, pc_report) == 1
+assert rec_hi["status"] == "applied" and rec_hi["note"] == "Thanks!" and rec_lo["status"] == "applied"
+
+# --- supervisor engine (made-up rules here; the real ones are private in pc/facts_rules.toml)
+import sys
+sys.path.insert(0, str(job_watch.HERE / "pc"))
+import audit
+import review
+rules_demo = {"never_claim": ["CrewAI", ".NET"], "rule": [
+    {"q": "authori[sz]ed to work", "unless": "egypt", "a": "^no\\b", "why": "not outside Egypt"},
+    {"q": "authori[sz]ed to work", "a": "^yes\\b", "why": "yes in Egypt"},
+    {"q": "(?=.*years)(?=.*python)", "a": "^\\s*5\\b", "why": "Python = 5"},
+    {"q": "salary", "review": True}]}
+v = audit.check([
+    {"q": "Are you legally authorized to work in the UK?", "a": "Yes"},        # problem
+    {"q": "Are you authorized to work in Egypt?", "a": "Yes"},                  # ok
+    {"q": "Years of experience with Python", "a": "5"},                         # ok
+    {"q": "Expected salary", "a": "12345 EGP"},                                 # unsure (review)
+    {"q": "Why us?", "a": "I love building with CrewAI"},                       # problem (never_claim)
+    {"q": "Why us?", "a": "I build RAG with FastAPI"},                          # unsure (no rule)
+    {"q": "Stack?", "a": "C#/.NET"},                                            # problem (never_claim, symbol edge)
+], rules_demo)
+assert v["ok"] == 2 and len(v["problems"]) == 3 and len(v["unsure"]) == 2, v
+assert {p["why"] for p in v["problems"]} >= {"not outside Egypt"}
+assert review.parse('Sure!\n{"problems": []}\nDone') == []
+assert review.parse('{"problems": [{"q": "s", "a": "1", "why": "x"}]}')[0]["why"] == "x"
+assert review.parse("no json here") is None and review.parse('{"other": 1}') is None
+import pc_runner
+qa = pc_runner.qa_text([{"q": f"Q{i} <b>", "a": "A"} for i in range(20)], limit=15)
+assert qa.count("•") == 15 and "+5" in qa and "&lt;b&gt;" in qa
 print("ok")

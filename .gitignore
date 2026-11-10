@@ -4,3 +4,7 @@ __pycache__/
 .state_key
 seen_jobs.json
 state.json
+pc.json
+pc/.env.json
+receipts/
+pc/facts_rules.toml

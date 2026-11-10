@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp(playwright/*)",
+      "read_file(D:\\MY\\cv\\cloude_CV)",
+      "write_file(D:\\MY\\cv\\cloude_CV)",
+      "command(regex:python (ats_score|build_cv)\\.py.*)"
+    ],
+    "deny": [
+      "read_file(D:\\MY\\cv\\cloude_CV\\مشروع\\job-catcher\\.state_key)",
+      "read_file(D:\\MY\\cv\\cloude_CV\\مشروع\\job-catcher\\pc\\.env.json)",
+      "write_file(D:\\MY\\cv\\cloude_CV\\candidate_facts.md)",
+      "write_file(D:\\MY\\cv\\cloude_CV\\مشروع\\job-catcher\\pc)",
+      "write_file(D:\\MY\\cv\\cloude_CV\\مشروع\\job-catcher\\.git)",
+      "write_file(D:\\MY\\cv\\cloude_CV\\.git)",
+      "mcp(firecrawl/*)",
+      "mcp(exa/*)",
+      "mcp(graphify/*)"
+    ]
+  }
+}

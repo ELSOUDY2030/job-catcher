@@ -1,0 +1,20 @@
+# Format of pc/facts_rules.toml (the real one is private and gitignored: copy this, fill in YOUR facts).
+# First rule whose `q` regex matches the question (and `unless` doesn't) decides.
+# `a` = regex the answer must match; review = true -> claude -p checks it against candidate_facts.md.
+
+never_claim = ["SomeFrameworkYouNeverUsed"]
+
+[[rule]]
+q = "authori[sz]ed to work|right to work"
+unless = "your-home-country"
+a = "^no\\b"
+why = "not authorized to work outside your home country"
+
+[[rule]]
+q = "(?=.*(years?|yrs|experience))(?=.*python)"
+a = "^\\s*N\\b"
+why = "Python = N years"
+
+[[rule]]
+q = "salary|compensation"
+review = true
