@@ -36,7 +36,8 @@ def parse(text):
 
 def _run(cmd, timeout, **kw):
     try:
-        return subprocess.run(cmd, text=True, encoding="utf-8", capture_output=True, timeout=timeout, **kw).stdout
+        return subprocess.run(cmd, text=True, encoding="utf-8", capture_output=True, timeout=timeout,
+                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), **kw).stdout
     except (OSError, subprocess.TimeoutExpired):
         return ""
 

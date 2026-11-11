@@ -50,6 +50,8 @@ FACTS = CV_DIR / "candidate_facts.md"
 AGY = shutil.which("agy") or str(Path(os.environ.get("LOCALAPPDATA", "")) / "agy" / "bin" / "agy.exe")
 OPENSSL = shutil.which("openssl") or r"C:\Program Files\Git\usr\bin\openssl.exe"
 MCP_PORT = 8931
+# the scheduled task runs pythonw (no console): without this every claude/agy/git call opens a black window
+NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 KEEP_DAYS = 30
 
 
@@ -67,11 +69,11 @@ def crypt(data, decrypt=False):
     # key via env, not "file:": openssl can't open paths with Arabic letters (مشروع) on Windows
     cmd = [OPENSSL, "enc", "-aes-256-cbc", "-pbkdf2", "-pass", "env:STATE_KEY"] + (["-d"] if decrypt else ["-salt"])
     env = {**os.environ, "STATE_KEY": KEY_FILE.read_text(encoding="utf-8").strip()}
-    return subprocess.run(cmd, input=data, capture_output=True, check=True, env=env).stdout
+    return subprocess.run(cmd, input=data, capture_output=True, creationflags=NO_WINDOW, check=True, env=env).stdout
 
 
 def git(*args, cwd=ROOT, check=True):
-    return subprocess.run(["git", *args], cwd=cwd, capture_output=True, check=check)
+    return subprocess.run(["git", *args], cwd=cwd, capture_output=True, creationflags=NO_WINDOW, check=check)
 
 
 def branch_file(branch, name):
@@ -93,7 +95,7 @@ def trigger_github():
     """GitHub's own 30-minute schedule is unreliable (it ran 2 of ~22 times on day one), so the PC,
     which runs every 30 minutes anyway, starts the workflow itself. The schedule stays as backup."""
     slug = repo_slug(git("remote", "get-url", "origin").stdout.decode())
-    done = subprocess.run([GH, "workflow", "run", "job_watch.yml", "--repo", slug], capture_output=True, text=True)
+    done = subprocess.run([GH, "workflow", "run", "job_watch.yml", "--repo", slug], capture_output=True, creationflags=NO_WINDOW, text=True)
     log("[i] GitHub run started" if done.returncode == 0 else f"[!] couldn't start the GitHub run: {done.stderr[:200]}")
 
 
@@ -232,7 +234,7 @@ def agy(prompt, log_file, continue_from=None, minutes=20):
     conv = conversation_id(continue_from) if continue_from else None
     cmd = [AGY] + (["--conversation", conv] if conv else []) + [
         "--model", AGY_MODEL, "--print-timeout", f"{minutes}m", "--log-file", str(log_file), "-p", prompt]
-    subprocess.run(cmd, cwd=CV_DIR, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+    subprocess.run(cmd, cwd=CV_DIR, creationflags=NO_WINDOW, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                    stderr=subprocess.DEVNULL, timeout=(minutes + 5) * 60)
 
 
