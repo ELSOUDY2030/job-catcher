@@ -210,9 +210,14 @@ def ready_to_apply():
     return problems
 
 
+AGY_MODEL = "gemini-3.8-flash-low"  # overridden by [apply] agy_model; list: `agy models`
+
+
 def agy(prompt, log_file, continue_=False, minutes=20):
+    # model: Gemini 3.8 Flash (Low) did the browser test in 106 s vs 242 s for Gemini 4 Argon (Medium);
+    # the supervisor (audit.py + claude -p) catches wrong answers either way
     cmd = [AGY] + (["--continue"] if continue_ else []) + [
-        "--print-timeout", f"{minutes}m", "--log-file", str(log_file), "-p", prompt]
+        "--model", AGY_MODEL, "--print-timeout", f"{minutes}m", "--log-file", str(log_file), "-p", prompt]
     subprocess.run(cmd, cwd=CV_DIR, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                    stderr=subprocess.DEVNULL, timeout=(minutes + 5) * 60)
 
@@ -313,6 +318,8 @@ def main():
     cfg = tomllib.loads((ROOT / "config.toml").read_text(encoding="utf-8"))
     env = json.loads(ENV_FILE.read_text(encoding="utf-8"))
     env["notify_each"] = cfg.get("apply", {}).get("notify_each", False)
+    global AGY_MODEL
+    AGY_MODEL = cfg.get("apply", {}).get("agy_model", AGY_MODEL)
     pc = load_pc()
     results = pc.get("results", {})
     cutoff = (datetime.now(timezone.utc) - timedelta(days=KEEP_DAYS)).isoformat()
