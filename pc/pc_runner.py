@@ -39,7 +39,8 @@ import audit                                    # noqa: E402
 import review                                   # noqa: E402
 import cv_maker                                 # noqa: E402
 from concurrent.futures import ThreadPoolExecutor  # noqa: E402
-from prompts import CV_MADE, CV_PICK, FILL, RESUME, SUBMIT  # noqa: E402
+import jobsite                                 # noqa: E402
+from prompts import BRIEF, FILL, RESUME, SUBMIT  # noqa: E402
 from sources import jobspy_boards, words_regex, wuzzuf  # noqa: E402
 
 RECEIPTS = ROOT / "receipts"
@@ -218,27 +219,47 @@ def ready_to_apply():
 AGY_MODEL = "gemini-3.8-flash-medium"  # overridden by [apply] agy_model; list: `agy models`
 
 
-def conversation_id(log_file):
-    """The agy session a log belongs to (printed as conversation=<uuid>), or None."""
+AGENT_SRC = HERE / "job-applier.md"            # the agent: no shell tool at all, fixed system prompt
+AGENT_DST = CV_DIR / ".agents" / "agents" / "job-applier" / "agent.md"
+SETTINGS = HERE / "agy-cli-settings.json"       # permissions for these runs only (--settings), never saved
+
+
+def install_agent():
+    """agy finds workspace agents in <cwd>/.agents/agents/<name>/agent.md; the repo copy is the source."""
+    text = AGENT_SRC.read_text(encoding="utf-8")
+    if not AGENT_DST.exists() or AGENT_DST.read_text(encoding="utf-8") != text:
+        AGENT_DST.parent.mkdir(parents=True, exist_ok=True)
+        AGENT_DST.write_text(text, encoding="utf-8")
+
+
+def agy(prompt, out, conversation=None, minutes=20):
+    """One agy turn -> its JSON result {conversation_id, status, response, num_turns, duration_seconds}
+    ({} if none). out = receipts/<id>/<step>: <step>.log is agy's log, <step>.json its result.
+    conversation: resume that session (Submit continues the fill's session, in the same tab)."""
+    # model: Gemini 3.8 Flash did the browser test in 106 s vs 242 s for Gemini 4 Argon (Medium);
+    # the supervisor (audit.py + review) catches wrong answers either way.
+    cmd = [AGY, "--agent", "job-applier", "--settings", str(SETTINGS), "--output-format", "json",
+           "--model", AGY_MODEL, "--print-timeout", f"{minutes}m", "--log-file", str(out.with_suffix(".log"))]
+    cmd += (["--conversation", conversation] if conversation else []) + ["-p", prompt]
     try:
-        m = re.search(r"conversation=([0-9a-f-]{36})", Path(log_file).read_text(encoding="utf-8", errors="ignore"))
-    except FileNotFoundError:
-        return None
-    return m.group(1) if m else None
+        stdout = subprocess.run(cmd, cwd=CV_DIR, creationflags=NO_WINDOW, stdin=subprocess.DEVNULL,
+                                capture_output=True, text=True, encoding="utf-8", errors="replace",
+                                timeout=(minutes + 5) * 60).stdout
+    except subprocess.TimeoutExpired:
+        stdout = ""
+    out.with_suffix(".json").write_text(stdout or "", encoding="utf-8")
+    res = review.parse_json(stdout) or {}
+    log(f"[i] agy {out.name}: {res.get('status', 'no result')} in {res.get('duration_seconds') or 0:.0f}s, "
+        f"{res.get('num_turns', '?')} turns")
+    return res
 
 
-def agy(prompt, log_file, continue_from=None, minutes=20):
-    # model: Gemini 3.8 Flash (Low) did the browser test in 106 s vs 242 s for Gemini 4 Argon (Medium);
-    # the supervisor (audit.py + claude -p) catches wrong answers either way.
-    # continue_from = the fill step's log: Submit resumes THAT session (not "the most recent" one).
-    conv = conversation_id(continue_from) if continue_from else None
-    cmd = [AGY] + (["--conversation", conv] if conv else []) + [
-        "--model", AGY_MODEL, "--print-timeout", f"{minutes}m", "--log-file", str(log_file), "-p", prompt]
-    subprocess.run(cmd, cwd=CV_DIR, creationflags=NO_WINDOW, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                   stderr=subprocess.DEVNULL, timeout=(minutes + 5) * 60)
+def reply_json(run, key):
+    """The JSON object in agy's reply, if it has `key`."""
+    obj = review.parse_json(run.get("response") or "")
+    return obj if isinstance(obj, dict) and key in obj else None
 
 
-EXAMPLE = HERE / "answers.example.json"  # agy reads this instead of searching folders with commands
 APPS_LOG = CV_DIR / "applications_log.md"
 
 
@@ -305,28 +326,69 @@ def finish(rec, status, note, env, rdir, answers=None, shot=None, review_note=""
     return entry
 
 
-def fill_prompt(rec, answers_file, cv_file=None):
-    return FILL.format(cv_dir=CV_DIR, title=rec["title"], company=rec["company"], location=rec["location"],
-                       score=rec["score"], url=rec["url"], answers_file=answers_file, example_file=EXAMPLE,
-                       cv_step=CV_MADE.format(cv_file=cv_file) if cv_file else CV_PICK)
+SKILL = CV_DIR / ".agents" / "skills" / "job-hunter" / "SKILL.md"
+CV_MENU = CV_DIR / "cv_menu.md"
+CHANNEL = {"easy_apply": "LinkedIn Easy Apply", "external": "LinkedIn -> company site", "no_button": "LinkedIn",
+           "wuzzuf": "Wuzzuf", "bayt": "Bayt", "external_direct": "company site"}
+LOG_SECTION = "## Job Catcher (automatic)"
+
+
+def write_brief(rec, rdir, cv_file, key):
+    """Everything agy needs in ONE file: steps, this site's fixed recipe, skill rules (sections 2 + 4), facts.
+    One read instead of SKILL.md + candidate_facts.md + cv_menu.md, and nothing left to look for."""
+    if cv_file:
+        cv_line = f"CV to upload: {cv_file} (already tailored to this job: use it, don't open it)"
+        names = {"cv_file": str(cv_file), "cv_name": cv_file.name}
+    else:
+        cv_line = (f"CV: pick ONE file from this menu by the job's focus; its full path is {CV_DIR}\\<file>\n"
+                   + CV_MENU.read_text(encoding="utf-8"))
+        names = {"cv_file": "the CV you picked (full path)", "cv_name": "the CV you picked"}
+    recipe = jobsite.RECIPES[key].format(company=rec["company"], **names)
+    skill = SKILL.read_text(encoding="utf-8")
+    rules = "\n\n".join(m.group(0).strip() for m in re.finditer(r"^## [24]\. .*?(?=^## )", skill, re.S | re.M))
+    text = (BRIEF.format(title=rec["title"], company=rec["company"], location=rec["location"], url=rec["url"],
+                         cv_line=cv_line, recipe=recipe, snapshot_rule=jobsite.SNAPSHOT_RULE)
+            + "\n## Screen and apply rules (job-hunter skill)\n" + rules
+            + "\n\n## Facts: the ONLY source for every answer\n" + FACTS.read_text(encoding="utf-8"))
+    brief = rdir / "brief.md"
+    brief.write_text(text, encoding="utf-8")
+    return brief
+
+
+def append_log(rec, key, answers, confirmation):
+    """The applications_log.md row, written by code (agy used to read and rewrite the whole 700-line file)."""
+    text = APPS_LOG.read_text(encoding="utf-8") if APPS_LOG.exists() else ""
+    n = max((int(x) for x in re.findall(r"^\| (\d+) \|", text, re.M)), default=0) + 1
+    head = "" if LOG_SECTION in text else (f"\n\n{LOG_SECTION}\n| # | Company | Role | Site | CV used | Notes |\n"
+                                           "|---|---------|------|------|---------|-------|\n")
+    qa = "; ".join(f"{x.get('q')}: {x.get('a')}" for x in answers.get("questions", []))
+    cells = [str(n), rec["company"], f"{rec['title']} ({rec['location']})", f"{CHANNEL[key]} {rec['url']}",
+             answers.get("cv_file", ""), f"{datetime.now():%d %b %Y} (Job Catcher); {qa}; Confirmed: '{confirmation}'"]
+    row = "| " + " | ".join(str(c).replace("|", "/").replace("\n", " ") for c in cells) + " |\n"
+    with APPS_LOG.open("a", encoding="utf-8") as f:
+        f.write(head + row)
 
 
 def apply_one(rec, cfg, env, rules, cv_file=None):
     rdir = RECEIPTS / rec["id"]
     rdir.mkdir(parents=True, exist_ok=True)
-    answers_file, result_file = rdir / "answers.json", rdir / "result.json"
-    for f in (answers_file, result_file, rdir / "agy_fill2.log"):
-        f.unlink(missing_ok=True)
+    for name in ("answers.json", "result.json", "fill.json", "fill2.json", "submit.json"):
+        (rdir / name).unlink(missing_ok=True)
     started = time.time()
 
-    agy(fill_prompt(rec, answers_file, cv_file), rdir / "agy_fill.log")
-    answers = read_json(answers_file)
-    if not answers:  # Flash sometimes runs a (blocked) shell command, which ends its run: resume it once
+    # code first: which site and which fixed steps (LinkedIn's public page tells Easy Apply / external)
+    key = jobsite.recipe_key(rec["url"])
+    log(f"[i] steps: {key}")
+    brief = write_brief(rec, rdir, cv_file, key)
+    run = agy(FILL.format(brief=brief), rdir / "fill")
+    answers = reply_json(run, "status")
+    if not answers and run.get("conversation_id"):  # ended early (e.g. tried a shell command): resume once
         log(f"[i] no receipt yet, resuming the same session: {rec['title']}")
-        agy(RESUME.format(answers_file=answers_file), rdir / "agy_fill2.log", continue_from=rdir / "agy_fill.log")
-        answers = read_json(answers_file)
+        run = agy(RESUME.format(brief=brief), rdir / "fill2", conversation=run["conversation_id"])
+        answers = reply_json(run, "status")
     if not answers:
         return finish(rec, "needs_you", "Antigravity didn't finish filling the form (no receipt).", env, rdir)
+    (rdir / "answers.json").write_text(json.dumps(answers, ensure_ascii=False, indent=1), encoding="utf-8")
     if answers.get("status") != "ready":
         status = "skipped" if answers.get("status") == "skipped" else "needs_you"
         return finish(rec, status, answers.get("reason", ""), env, rdir, answers)
@@ -349,10 +411,13 @@ def apply_one(rec, cfg, env, rules, cv_file=None):
         why = "\n".join(f"• {p['q'][:70]} → {p['a'][:50]}: {p['why']}" for p in verdict["problems"][:6])
         return finish(rec, "blocked", f"المراجعة لقت مشكلة، فماتبعتش:\n{why}", env, rdir, answers, review_note=review_note)
 
-    agy(SUBMIT.format(answers_file=answers_file, result_file=result_file, shot_name=f"{rec['id']}.png"),
-        rdir / "agy_submit.log", minutes=10,
-        continue_from=rdir / ("agy_fill2.log" if (rdir / "agy_fill2.log").exists() else "agy_fill.log"))
-    result = read_json(result_file) or {}
+    sub = agy(SUBMIT.format(answers=json.dumps(answers.get("questions", []), ensure_ascii=False),
+                            shot_name=f"{rec['id']}.png"), rdir / "submit", conversation=run.get("conversation_id"),
+              minutes=10)
+    result = reply_json(sub, "submitted") or {}
+    (rdir / "result.json").write_text(json.dumps(result, ensure_ascii=False, indent=1), encoding="utf-8")
+    if result.get("submitted"):
+        append_log(rec, key, answers, result.get("confirmation", ""))
     shot = find_shot(rec["id"], started)
     if result.get("submitted"):
         return finish(rec, "applied", result.get("confirmation", ""), env, rdir, answers, shot, review_note)
@@ -394,9 +459,9 @@ def main():
         else:
             queue.append(rec)
     queue = queue[: cfg.get("apply", {}).get("per_cycle", 4)]
+    save_pc(pc)  # skipped ones are kept even if this run is stopped (Ctrl+C) before the first job ends
     if not queue:
         log("[i] nothing queued")
-        save_pc(pc)  # skipped ones still go back to GitHub
         return
     problems = ready_to_apply()
     if problems:
@@ -410,6 +475,7 @@ def main():
         save_pc(pc)
         return
     rules = audit.load_rules()
+    install_agent()
     # Sonnet makes the NEXT job's CV while Antigravity applies to this one ([apply] cv_model = "" turns it off)
     cv_model = cfg.get("apply", {}).get("cv_model", "claude-sonnet-5-5")
     with ThreadPoolExecutor(max_workers=1) as cv_pool:

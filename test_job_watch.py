@@ -359,10 +359,39 @@ assert pc_runner.already_logged({"url": "https://wuzzuf.net/jobs/p/n0x2wacijoq1-
 assert pc_runner.already_logged({"url": "https://x/1", "title": "Senior Data Scientist", "company": "Valu"}, log_demo)
 assert not pc_runner.already_logged({"url": "https://www.linkedin.com/jobs/view/4489445391", "title": "AI Engineer",
                                      "company": "Luxoft"}, log_demo)
-job_demo = {"title": "t", "company": "c", "location": "l", "score": 9, "url": "u"}
-for cv in (None, "X.pdf"):
-    p = pc_runner.fill_prompt(job_demo, "a.json", cv)
-    assert "{" not in p.split("UTF-8 JSON only")[0] and (("X.pdf" in p) == bool(cv)) and (("cv_menu.md by" in p) != bool(cv))
+import tempfile as _tf
+import jobsite
+from pathlib import Path as _P
+assert jobsite.linkedin_kind('x data-tracking-control-name="public_jobs_apply-link-onsite"') == "easy_apply"
+assert jobsite.linkedin_kind('<a data-tracking-control-name="public_jobs_apply-link-offsite_x">') == "external"
+assert jobsite.linkedin_kind("<html>no button</html>") == "no_button" and jobsite.linkedin_kind("") is None
+assert jobsite.recipe_key("https://wuzzuf.net/jobs/p/x") == "wuzzuf"
+assert jobsite.recipe_key("https://apply.workable.com/x/j/1") == "external_direct"
+assert jobsite.recipe_key("https://www.linkedin.com/jobs/view/123", html="") == "no_button"
+with _tf.TemporaryDirectory() as _d:  # brief + log row on fake files (no private data, no network)
+    _d = _P(_d)
+    (_d / "facts.md").write_text("# Facts\nSalary {not a placeholder}\n", encoding="utf-8")
+    (_d / "SKILL.md").write_text("# S\n## 2. Screen\nskip rule\n## 3. CV\nno\n## 4. Apply\napply rule\n## 5. Log\n",
+                                 encoding="utf-8")
+    (_d / "menu.md").write_text("| focus | X.pdf |\n", encoding="utf-8")
+    (_d / "log.md").write_text("| 7 | Old | Role | LinkedIn | CV | n |\n- note\n", encoding="utf-8")
+    pc_runner.FACTS, pc_runner.SKILL, pc_runner.CV_MENU, pc_runner.APPS_LOG = (
+        _d / "facts.md", _d / "SKILL.md", _d / "menu.md", _d / "log.md")
+    job_demo = {"title": "AI Eng", "company": "Acme", "location": "Cairo", "score": 9,
+                "url": "https://www.linkedin.com/jobs/view/123"}
+    for cv in (None, _d / "Mohamed_Nomer_CV_Acme.pdf"):
+        for key in jobsite.RECIPES:
+            b = pc_runner.write_brief(job_demo, _d, cv, key).read_text(encoding="utf-8")
+            assert "skip rule" in b and "apply rule" in b and "no\n" not in b and "{not a placeholder}" in b
+            assert ("Mohamed_Nomer_CV_Acme.pdf" in b) == bool(cv) and ("| focus | X.pdf |" in b) != bool(cv)
+            assert "{cv_file}" not in b and "{company}" not in b
+    pc_runner.append_log(job_demo, "easy_apply", {"cv_file": "A.pdf", "questions": [{"q": "Email|x", "a": "y"}]}, "Sent!")
+    pc_runner.append_log(job_demo, "easy_apply", {"cv_file": "A.pdf", "questions": []}, "Sent!")
+    log_rows = (_d / "log.md").read_text(encoding="utf-8")
+    assert log_rows.count(pc_runner.LOG_SECTION) == 1 and "| 8 | Acme |" in log_rows and "| 9 | Acme |" in log_rows
+    assert "Email/x: y" in log_rows and pc_runner.already_logged(job_demo, log_rows)
+assert pc_runner.reply_json({"response": 'ok {"status": "ready", "questions": []}'}, "status")["status"] == "ready"
+assert pc_runner.reply_json({"response": "no json"}, "status") is None and pc_runner.reply_json({}, "submitted") is None
 import cv_maker
 cv_ok = {"title": "AI Engineer | Agents", "profile": "Builds LLM apps.", "skills": cv_maker.SKILLS[::-1],
          "projects": cv_maker.PROJECTS}

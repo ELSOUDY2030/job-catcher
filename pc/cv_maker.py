@@ -8,10 +8,10 @@ import html
 import json
 import re
 import sys
-import urllib.request
 from pathlib import Path
 
 import audit
+import jobsite
 from review import ask
 
 HERE = Path(__file__).resolve().parent
@@ -50,14 +50,10 @@ Reply with JSON only:
 """
 
 
-def job_description(url, limit=4000):
-    """LinkedIn's public job API needs no login; other sites: the page text. '' if it can't be read."""
-    m = re.search(r"linkedin\.com/jobs/view/(?:[^/?]*-)?(\d+)", url)
-    src = f"https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{m[1]}" if m else url
-    try:
-        req = urllib.request.Request(src, headers={"User-Agent": "Mozilla/5.0"})
-        page = urllib.request.urlopen(req, timeout=30).read().decode("utf-8", "ignore")
-    except Exception:
+def job_description(url, limit=4000, html=None):
+    """The job's text from its public page (jobsite.page; LinkedIn needs no login). '' if it can't be read."""
+    page = jobsite.page(url) if html is None else html
+    if not page:
         return ""
     body = re.search(r"show-more-less-html__markup[^>]*>(.*?)</div>", page, re.S)
     if not body:

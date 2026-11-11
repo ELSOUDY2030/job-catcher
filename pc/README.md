@@ -22,19 +22,24 @@ agy (Submit + سكرين) ── result.json ── Telegram
 ## الإعداد (مرة واحدة)
 
 1. **صلاحيات Antigravity:**
-   - انسخ `agy-cli-settings.json` لـ `C:\Users\Elsou\.gemini\antigravity-cli\settings.json`.
+   - البرنامج بيبعت `agy-cli-settings.json` مع كل تشغيلة (`--settings`)، فـ `agy` العادي بتاعك مابيتأثرش.
    - الملف ده بيسمح بحاجتين بس: المتصفح (Playwright)، والكتابة جوا `D:\MY\cv\cloude_CV`.
    - وبيمنع: قراية مفتاح التشفير، والكتابة في `candidate_facts.md`.
 2. **Telegram للجهاز:** `.venv\Scripts\python pc\setup_pc.py`. هيطلب الـ token مخفي، وبعدين ابعت للبوت أي رسالة.
 3. **Playwright:** شغّل `D:\MY\cv\cloude_CV\start_playwright_mcp.bat` وسيب Edge مفتوح ومسجّل دخول.
    علشان رفع الـ CV يشتغل: `edge://extensions` ← Playwright MCP Bridge ← Details ← فعّل **Allow access to file URLs**.
 4. **مكتبة الـ CV:** `.venv\Scripts\python -m pip install pypdf` (علشان `build_cv.py`).
-5. **الجدولة:** من PowerShell شغّل `pc\install_task.ps1`، فبيتشغل كل 30 دقيقة.
+5. **التشغيل:** إما لايف قدامك (Ctrl+C يوقفه):
+   `.venv\Scripts\python.exe pc\pc_runner.py --live`
+   أو في الخلفية: `pc\install_task.ps1`، فبيتشغل كل 30 دقيقة. الاتنين مايشتغلوش مع بعض أبداً، لأن فيه قفل بيمنع ده.
 
 ## الملفات
 - `pc_runner.py`: البرنامج نفسه.
 - `audit.py`: المراقب.
-- `review.py`: مراجعة Claude.
+- `review.py`: مراجعة Claude، ولو Claude مش متاح بيراجع Gemini.
+- `job-applier.md`: الـ agent بتاع Antigravity، ومن غير أداة أوامر خالص. البرنامج بينسخه لـ `cloude_CV\.agents\agents\job-applier\agent.md`.
+- `jobsite.py`: الكود بيعرف من صفحة LinkedIn العامة نوع التقديم (Easy Apply ولا موقع الشركة)، ويختار خطوات الموقع الثابتة.
+- `receipts/<id>/brief.md`: كل اللي Gemini محتاجه في ملف واحد: الخطوات، وقواعد الـ skill، والحقائق.
 - `cv_maker.py`: Sonnet بيكتب العنوان والـ profile وترتيب المهارات والمشاريع من `candidate_facts.md` بس، و `build_cv.py` يطلّع الـ PDF في `cloude_CV\auto_cvs\`.
 - `prompts.py`: التعليمات اللي بتروح لـ Antigravity.
 - `facts_rules.toml`: **ملف خاص بيك ومبيترفعش.** فيه الإجابات المقبولة من `candidate_facts.md`، ولو عدّلت `candidate_facts` لازم تعدّله معاه.

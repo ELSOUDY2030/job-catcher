@@ -1,61 +1,44 @@
-"""What Antigravity (agy -p) is told to do. Two steps, so the answers are checked BEFORE Submit."""
+"""What Antigravity (agy -p --agent job-applier) is told. Two steps, so the answers are checked BEFORE Submit."""
 
-FILL = """You are applying to ONE job for Mohamed Nomer, unattended. Nobody is watching: never guess.
-Do NOT run terminal / shell commands (they are blocked and stop you). Use only the playwright MCP
-browser tools (the user's logged-in Edge) and your file read/write tools on these files in {cv_dir}:
-- .agents/skills/job-hunter/SKILL.md : follow its sections 2 (screen) and 4 (apply)
-- candidate_facts.md : the ONLY source for every answer (its rules at the top apply)
-- cv_menu.md : ready CVs, only if step 2 says to pick one (replaces skill section 3 here)
-Already done for you, so SKIP these (they cost minutes): applications_log.md was checked and this
-job is not in it, so don't read it; prompt_for_other_ai.md, build_cv.py, ats_score.py and the CV
-PDFs: don't open them.
+FILL = """Read the file {brief} with read_file, in one call (it is your whole task), and follow it exactly.
+Your final reply is the JSON receipt it describes, and nothing else."""
 
-Job: {title} | {company} | {location} | match {score}/10
+# brief.md for one job (pc_runner.write_brief fills it; facts and rules are appended after it)
+BRIEF = """# Application brief (your whole task)
+
+Job: {title} | {company} | {location}
 Link: {url}
+{cv_line}
 
-1. Open the link in a NEW tab. Screen it (skill section 2). If it is not a fit or closed:
-   write the receipt with status "skipped" and the reason, then stop.
-2. {cv_step}
-3. Fill the application (skill section 4) but DO NOT press the final Submit / Send / Apply button.
-   Stop on the last page before it and leave that tab open.
-   Big pages (LinkedIn): don't read a long snapshot page by page. Look for the exact text you need
-   (the CV file name, the field label) and act on that element. If the site lists saved resumes and
-   the chosen CV isn't there, upload it with browser_file_upload. If an upload fails, don't retry
-   or try other ways: stop with status "needs_you" and the error.
-4. Stop with status "needs_you" (put the exact step and link in "reason") if you meet: a login,
-   password, email or SMS code, CAPTCHA, account creation, or ANY question whose answer is not
-   in candidate_facts.md.
-5. Write the receipt file {answers_file} (UTF-8 JSON only, nothing else in the file):
-{{"status": "ready" | "needs_you" | "skipped", "reason": "...", "cv_file": "<CV file used>",
-  "questions": [{{"q": "<question exactly as shown>", "a": "<answer exactly as typed or selected>"}}]}}
-   List EVERY field on the form, also pre-filled ones (name, email, phone, years, yes/no, salary,
-   cover letter text...). This receipt is checked before anything is sent.
-   A complete example receipt is {example_file} (read it with your file tool if you want one).
-   Its folder already exists and is empty: don't look into it or any other folder, just write the
-   file with your file tool.
+## Steps: do them in order, nothing else
+1. browser_tabs with action "new" and the link above. One tab, keep it open.
+2. Screen the job with the "Screen" rules below. If it isn't a fit: status "skipped" with the reason.
+3. Apply with these fixed steps for this site:
+{recipe}
+4. Stop with status "needs_you" (exact step + error in "reason") on: a login, password, email/SMS code,
+   CAPTCHA, account creation, a failed upload, or ANY question whose answer is not in the facts below.
+5. Never press the final Submit / Send / Submit application button. Leave the tab on that last page.
+6. {snapshot_rule}
+
+## Your final reply: this JSON only
+{{"status": "ready" | "needs_you" | "skipped", "reason": "...", "cv_file": "<CV file name used>",
+ "questions": [{{"q": "<question exactly as shown>", "a": "<answer exactly as typed or selected>"}}]}}
+"questions" lists EVERY field of the form, pre-filled ones too (name, email, phone, years, yes/no, salary,
+cover letter...). It is checked before anything is sent.
 """
 
-RESUME = """Your last step was blocked and ended your run: terminal / shell commands are not allowed, not
-even to check something. Continue the SAME application in the SAME tab from where you stopped, using only
-the playwright browser tools and your file read/write tools. Follow the same instructions as before and
-finish by writing the receipt file {answers_file} (do not press the final Submit)."""
-
-CV_MADE = ("Use this CV, already tailored to this job: {cv_file} (don't pick another, don't open it). "
-           "If the site shows saved resumes, upload this file instead.")
-CV_PICK = "Pick ONE CV from cv_menu.md by the job's focus (don't build a new one)."
+RESUME = """Your run ended before you replied with the receipt (shell commands don't exist for you; maybe you
+tried one). Continue the SAME application in the SAME tab from where you stopped, using only the playwright
+browser tools, following {brief}. Never press the final submit. Final reply: the JSON receipt only."""
 
 SUBMIT = """Continue the SAME application in the SAME browser tab. Its answers were checked and approved.
-Do NOT run terminal / shell commands (they are blocked). Browser tools and file read/write only.
-1. Make sure the form still shows exactly the answers in {answers_file}. If anything differs or a new
-   question appeared, do NOT submit: write {result_file} with "submitted": false and the reason.
-2. Press the final Submit / Send / Apply button once and wait for the confirmation.
-3. Take a screenshot of the confirmation with the playwright browser_take_screenshot tool,
-   filename "{shot_name}".
-4. Append the row to applications_log.md as the job-hunter skill says (section 5), with every answer.
-5. Write {result_file} (UTF-8 JSON only):
-{{"submitted": true | false, "reason": "...", "confirmation": "<confirmation text shown on the page>"}}
-Do nothing else.
-"""
+1. browser_find the final button ("Submit application" / "Submit" / "Send"). Check that the form still shows
+   these answers: {answers}
+   If anything differs or a new question appeared, don't submit: reply {{"submitted": false, "reason": "..."}}.
+2. Click the final button once and wait for the confirmation.
+3. browser_take_screenshot with filename "{shot_name}".
+4. Final reply, JSON only:
+{{"submitted": true | false, "reason": "...", "confirmation": "<confirmation text shown on the page>"}}"""
 
 REVIEW = """You are a strict reviewer of a job application that an AI agent filled for Mohamed Nomer.
 The ONLY source of truth is candidate_facts.md below. For each answer listed, decide whether it is
