@@ -482,8 +482,12 @@ def main():
         make_cv = lambda r: cv_pool.submit(cv_maker.make, r, FACTS, cv_model, log) if cv_model else None  # noqa: E731
         next_cv = make_cv(queue[0])
         for i, rec in enumerate(queue):
-            cv_file = next_cv.result() if next_cv else None
+            cv_file, skip = next_cv.result() if next_cv else (None, "")
             next_cv = make_cv(queue[i + 1]) if i + 1 < len(queue) else None
+            if skip:  # screened out from the job description: no browser run needed
+                pc["results"][rec["id"]] = finish(rec, "skipped", skip, env, RECEIPTS / rec["id"])
+                save_pc(pc)
+                continue
             log(f"[>] applying: {rec['title']} | {rec['company']} | ⭐ {rec['score']} | CV: "
                 f"{cv_file.name if cv_file else 'from cv_menu.md'}")
             try:

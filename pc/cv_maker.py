@@ -42,8 +42,12 @@ Job: {title} | {company} | {location}
 {cv}
 </base_cv>
 
+First screen the job with these rules (only what the job description clearly says, never assume):
+{screen}
+
 Reply with JSON only:
-{{"title": "<CV headline, max 90 chars, e.g. AI Engineer | LLM Applications, RAG & Agents>",
+{{"skip": "<empty string if the job passes the screen; else the rule it breaks, quoting the description>",
+  "title": "<CV headline, max 90 chars, e.g. AI Engineer | LLM Applications, RAG & Agents>",
   "profile": "<profile paragraph, 60-90 words, the job's most important matching facts first>",
   "skills": <these 5 keys, most relevant first: {skills}>,
   "projects": <these 9 keys, most relevant first: {projects}>}}
@@ -82,8 +86,17 @@ def file_name(company):
     return re.sub(r"[^A-Za-z0-9]+", "_", company).strip("_")[:40] or "Job"
 
 
+def screen_rules():
+    """Section 2 (Screen) of the job-hunter skill."""
+    skill = (CV_DIR / ".agents" / "skills" / "job-hunter" / "SKILL.md").read_text(encoding="utf-8")
+    m = re.search(r"^## 2\. .*?(?=^## )", skill, re.S | re.M)
+    return m.group(0).strip() if m else ""
+
+
 def make(rec, facts_file, model="claude-sonnet-5-5", log=print, timeout=600):
-    """-> path of the tailored PDF, or None (then the runner falls back to cv_menu.md)."""
+    """-> (path of the tailored PDF or None, skip reason or "").
+    The skip reason saves the browser run: Sonnet reads the job description anyway, so it screens it too.
+    No PDF and no reason -> the runner falls back to cv_menu.md."""
     try:
         import build_cv  # D:\MY\cv\cloude_CV\build_cv.py (Edge prints the PDF)
         jd = job_description(rec["url"])
@@ -91,12 +104,14 @@ def make(rec, facts_file, model="claude-sonnet-5-5", log=print, timeout=600):
                                jd=jd or "(not available: tailor to the job title)",
                                facts=Path(facts_file).read_text(encoding="utf-8"),
                                cv=plain((CV_DIR / "cv.html").read_text(encoding="utf-8"), limit=20000),
-                               skills=json.dumps(SKILLS), projects=json.dumps(PROJECTS))
+                               skills=json.dumps(SKILLS), projects=json.dumps(PROJECTS), screen=screen_rules())
         v, who = ask(prompt, claude_model=model, timeout=timeout)  # Gemini if Claude is out
+        if jd and isinstance(v, dict) and str(v.get("skip") or "").strip():  # no JD = nothing to screen on
+            return None, f"{who} screened the job description: {str(v['skip']).strip()[:300]}"
         why = check(v, audit.load_rules().get("never_claim", []))
         if why:
             log(f"[!] CV for {rec['company']} not used: {'; '.join(why)[:300]}")
-            return None
+            return None, ""
         name = file_name(rec["company"])
         build_cv.build(name, {"title": html.escape(v["title"]), "profile": html.escape(v["profile"]) + " " + build_cv.MSC,
                               "skills": v["skills"], "projects": v["projects"]})
@@ -104,7 +119,7 @@ def make(rec, facts_file, model="claude-sonnet-5-5", log=print, timeout=600):
         (CV_DIR / f"cv_{name}.html").unlink(missing_ok=True)
         pdf = (CV_DIR / f"Mohamed_Nomer_CV_{name}.pdf").replace(OUT_DIR / f"Mohamed_Nomer_CV_{name}.pdf")
         log(f"[i] tailored CV ready ({who}): {pdf.name} (JD {'read' if jd else 'not found'})")
-        return pdf
+        return pdf, ""
     except Exception as e:  # never stop an application because of the CV
         log(f"[!] CV for {rec.get('company')} failed: {e}")
-        return None
+        return None, ""
