@@ -214,10 +214,21 @@ def ready_to_apply():
 AGY_MODEL = "gemini-3.8-flash-medium"  # overridden by [apply] agy_model; list: `agy models`
 
 
-def agy(prompt, log_file, continue_=False, minutes=20):
+def conversation_id(log_file):
+    """The agy session a log belongs to (printed as conversation=<uuid>), or None."""
+    try:
+        m = re.search(r"conversation=([0-9a-f-]{36})", Path(log_file).read_text(encoding="utf-8", errors="ignore"))
+    except FileNotFoundError:
+        return None
+    return m.group(1) if m else None
+
+
+def agy(prompt, log_file, continue_from=None, minutes=20):
     # model: Gemini 3.8 Flash (Low) did the browser test in 106 s vs 242 s for Gemini 4 Argon (Medium);
-    # the supervisor (audit.py + claude -p) catches wrong answers either way
-    cmd = [AGY] + (["--continue"] if continue_ else []) + [
+    # the supervisor (audit.py + claude -p) catches wrong answers either way.
+    # continue_from = the fill step's log: Submit resumes THAT session (not "the most recent" one).
+    conv = conversation_id(continue_from) if continue_from else None
+    cmd = [AGY] + (["--conversation", conv] if conv else []) + [
         "--model", AGY_MODEL, "--print-timeout", f"{minutes}m", "--log-file", str(log_file), "-p", prompt]
     subprocess.run(cmd, cwd=CV_DIR, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                    stderr=subprocess.DEVNULL, timeout=(minutes + 5) * 60)
@@ -326,7 +337,7 @@ def apply_one(rec, cfg, env, rules):
         return finish(rec, "blocked", f"المراجعة لقت مشكلة، فماتبعتش:\n{why}", env, rdir, answers, review_note=review_note)
 
     agy(SUBMIT.format(answers_file=answers_file, result_file=result_file, shot_name=f"{rec['id']}.png"),
-        rdir / "agy_submit.log", continue_=True, minutes=10)
+        rdir / "agy_submit.log", continue_from=rdir / "agy_fill.log", minutes=10)
     result = read_json(result_file) or {}
     shot = find_shot(rec["id"], started)
     if result.get("submitted"):
