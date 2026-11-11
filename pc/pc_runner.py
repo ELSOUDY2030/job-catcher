@@ -166,16 +166,39 @@ def scan(cfg):
 
 # ---------- 2. apply ----------
 
+def mcp_up():
+    try:
+        socket.create_connection(("localhost", MCP_PORT), timeout=3).close()
+        return True
+    except OSError:
+        return False
+
+
+def ensure_mcp(wait=60):
+    """Start the Playwright MCP server (your start_playwright_mcp_hidden.vbs, no window) if it isn't running.
+    With PLAYWRIGHT_MCP_EXTENSION_TOKEN set (pc/set_playwright_token.ps1) it attaches to Edge without a prompt."""
+    if mcp_up():
+        return True
+    launcher = CV_DIR / "start_playwright_mcp_hidden.vbs"
+    if not launcher.exists():
+        return False
+    log("[i] starting the Playwright MCP server")
+    subprocess.Popen(["wscript.exe", str(launcher)], cwd=CV_DIR)
+    for _ in range(wait // 3):
+        time.sleep(3)
+        if mcp_up():
+            return True
+    return False
+
+
 def ready_to_apply():
     problems = []
     if not Path(AGY).exists():
         problems.append("Antigravity CLI (agy) not found")
     if not audit.RULES_FILE.exists():
         problems.append("pc/facts_rules.toml missing")
-    try:
-        socket.create_connection(("localhost", MCP_PORT), timeout=3).close()
-    except OSError:
-        problems.append(f"Playwright MCP not running on port {MCP_PORT} (start_playwright_mcp.bat + Edge)")
+    if not ensure_mcp():
+        problems.append(f"Playwright MCP didn't start on port {MCP_PORT} (start_playwright_mcp.bat + Edge open)")
     return problems
 
 
