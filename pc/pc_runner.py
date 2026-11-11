@@ -357,7 +357,7 @@ def apply_one(rec, cfg, env, rules, cv_file=None):
 
 def main():
     cfg = tomllib.loads((ROOT / "config.toml").read_text(encoding="utf-8"))
-    env = json.loads(ENV_FILE.read_text(encoding="utf-8"))
+    env = read_json(ENV_FILE) or {}  # only needed for notify_each; the hourly summary comes from GitHub
     env["notify_each"] = cfg.get("apply", {}).get("notify_each", False)
     global AGY_MODEL
     AGY_MODEL = review.AGY_MODEL = cfg.get("apply", {}).get("agy_model", AGY_MODEL)

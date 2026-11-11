@@ -28,7 +28,8 @@ agy (Submit + سكرين) ── result.json ── Telegram
 2. **Telegram للجهاز:** `.venv\Scripts\python pc\setup_pc.py`. هيطلب الـ token مخفي، وبعدين ابعت للبوت أي رسالة.
 3. **Playwright:** شغّل `D:\MY\cv\cloude_CV\start_playwright_mcp.bat` وسيب Edge مفتوح ومسجّل دخول.
    علشان رفع الـ CV يشتغل: `edge://extensions` ← Playwright MCP Bridge ← Details ← فعّل **Allow access to file URLs**.
-4. **الجدولة:** من PowerShell شغّل `pc\install_task.ps1`، فبيتشغل كل 30 دقيقة.
+4. **مكتبة الـ CV:** `.venv\Scripts\python -m pip install pypdf` (علشان `build_cv.py`).
+5. **الجدولة:** من PowerShell شغّل `pc\install_task.ps1`، فبيتشغل كل 30 دقيقة.
 
 ## الملفات
 - `pc_runner.py`: البرنامج نفسه.
