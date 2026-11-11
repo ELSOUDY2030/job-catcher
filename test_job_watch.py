@@ -350,6 +350,9 @@ for t in ["CS27 BAC+5 - Stage - Data Scientist (H/F)", "Stage Ingénieur Data/IA
 for t in ["Founding AI Engineer (early-stage startup)", "Senior ML Engineer", "Internal Tools AI Engineer"]:
     assert not skip.search(t), t
 assert sc("CS27 BAC+5 - Stage - Data Scientist (H/F)") < cfg["apply"]["auto_min_score"]
+for url in ["https://github.com/ELSOUDY2030/job-catcher.git\n", "https://github.com/ELSOUDY2030/job-catcher",
+            "git@github.com:ELSOUDY2030/job-catcher.git"]:
+    assert pc_runner.repo_slug(url) == "ELSOUDY2030/job-catcher", url
 qa = pc_runner.qa_text([{"q": f"Q{i} <b>", "a": "A"} for i in range(20)], limit=15)
 assert qa.count("•") == 15 and "+5" in qa and "&lt;b&gt;" in qa
 print("ok")

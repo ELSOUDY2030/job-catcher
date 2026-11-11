@@ -78,6 +78,22 @@ def branch_file(branch, name):
     return crypt(git("show", f"FETCH_HEAD:{name}").stdout, decrypt=True)
 
 
+GH = shutil.which("gh") or r"C:\Program Files\GitHub CLI\gh.exe"
+
+
+def repo_slug(url):
+    """'https://github.com/OWNER/REPO.git' or 'git@github.com:OWNER/REPO.git' -> 'OWNER/REPO'."""
+    return url.strip().removesuffix(".git").replace("git@github.com:", "https://github.com/").split("github.com/")[-1]
+
+
+def trigger_github():
+    """GitHub's own 30-minute schedule is unreliable (it ran 2 of ~22 times on day one), so the PC,
+    which runs every 30 minutes anyway, starts the workflow itself. The schedule stays as backup."""
+    slug = repo_slug(git("remote", "get-url", "origin").stdout.decode())
+    done = subprocess.run([GH, "workflow", "run", "job_watch.yml", "--repo", slug], capture_output=True, text=True)
+    log("[i] GitHub run started" if done.returncode == 0 else f"[!] couldn't start the GitHub run: {done.stderr[:200]}")
+
+
 def load_seen():
     data = branch_file("state", "state.enc")
     if not data:
@@ -274,6 +290,8 @@ def main():
     pc = {"jobs": scan(cfg), "results": results, "scanned_at": datetime.now(timezone.utc).isoformat(timespec="minutes"),
           "warned": pc.get("warned", ""), "warnings": []}  # warnings show up in the hourly summary
     save_pc(pc)  # GitHub gets the new Wuzzuf/Bayt jobs even if applying fails below
+    if cfg.get("apply", {}).get("trigger_github", True):
+        trigger_github()  # it reads the pc branch we just pushed
 
     seen = load_seen()
     skip = words_regex(cfg.get("apply", {}).get("skip_titles"))
