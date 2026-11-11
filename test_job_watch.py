@@ -268,6 +268,7 @@ hi, lo = make_job("Senior LLM Engineer", "Acme", "", "u1", None, "t"), make_job(
 rec_hi, rec_lo = make_record(job_key(hi), hi, 9, now2, 8), make_record(job_key(lo), lo, 5, now2, 8)
 assert rec_hi["status"] == "queued" and rec_hi["auto"] and rec_lo["status"] == "new" and not rec_lo["auto"]
 assert make_record(job_key(hi), hi, 9, now2)["status"] == "new"  # no [apply] -> nothing automatic
+assert "text" not in make_record(job_key(hi), hi, 9, now2)  # description kept only for the auto queue
 assert "🤖" in format_job(hi, 9, queued=True) and "🤖" not in format_job(lo, 5)
 rows = telegram_bot.buttons(rec_lo["id"], "new")["inline_keyboard"]
 assert rows[1][0]["callback_data"] == f"q:{rec_lo['id']}"                      # 🚀 = queue it
@@ -367,6 +368,8 @@ assert jobsite.linkedin_kind('<a data-tracking-control-name="public_jobs_apply-l
 assert jobsite.linkedin_kind("<html>no button</html>") == "no_button" and jobsite.linkedin_kind("") is None
 assert jobsite.recipe_key("https://wuzzuf.net/jobs/p/x") == "wuzzuf"
 assert jobsite.recipe_key("https://apply.workable.com/x/j/1") == "external_direct"
+assert jobsite.recipe_key("https://se.indeed.com/viewjob?jk=1") == "indeed"
+assert set(jobsite.RECIPES) == set(pc_runner.CHANNEL)  # every site has a name in applications_log.md
 assert jobsite.recipe_key("https://www.linkedin.com/jobs/view/123", html="") == "no_button"
 with _tf.TemporaryDirectory() as _d:  # brief + log row on fake files (no private data, no network)
     _d = _P(_d)

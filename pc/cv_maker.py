@@ -99,7 +99,7 @@ def make(rec, facts_file, model="claude-sonnet-5-5", log=print, timeout=600):
     No PDF and no reason -> the runner falls back to cv_menu.md."""
     try:
         import build_cv  # D:\MY\cv\cloude_CV\build_cv.py (Edge prints the PDF)
-        jd = job_description(rec["url"])
+        jd = job_description(rec["url"]) or rec.get("text", "")  # Indeed blocks the fetch: the search's copy
         prompt = PROMPT.format(title=rec["title"], company=rec["company"], location=rec["location"],
                                jd=jd or "(not available: tailor to the job title)",
                                facts=Path(facts_file).read_text(encoding="utf-8"),

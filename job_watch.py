@@ -137,7 +137,7 @@ def prune(seen, today):
 
 def make_record(key, job, score, now, auto_min_score=None):
     auto = auto_min_score is not None and score >= auto_min_score
-    return {
+    rec = {
         "id": short_id(key),
         "title": job["title"],
         "company": job["company"],
@@ -151,6 +151,9 @@ def make_record(key, job, score, now, auto_min_score=None):
         "first_seen": now.isoformat(timespec="minutes"),
         "last_seen": now.date().isoformat(),
     }
+    if auto and job.get("text"):  # the PC's CV maker screens it (Indeed pages can't be fetched); dropped when done
+        rec["text"] = job["text"]
+    return rec
 
 
 def apply_pc_results(seen, pc, now=None):
@@ -167,6 +170,7 @@ def apply_pc_results(seen, pc, now=None):
             rec.update(status=result["status"], done_at=result.get("at", ""), note=result.get("note", ""),
                        proof=result.get("proof", ""),
                        status_at=now.isoformat(timespec="minutes") if now else result.get("at", ""))
+            rec.pop("text", None)
             changed += 1
     return changed
 

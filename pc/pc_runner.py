@@ -329,7 +329,7 @@ def finish(rec, status, note, env, rdir, answers=None, shot=None, review_note=""
 SKILL = CV_DIR / ".agents" / "skills" / "job-hunter" / "SKILL.md"
 CV_MENU = CV_DIR / "cv_menu.md"
 CHANNEL = {"easy_apply": "LinkedIn Easy Apply", "external": "LinkedIn -> company site", "no_button": "LinkedIn",
-           "wuzzuf": "Wuzzuf", "bayt": "Bayt", "external_direct": "company site"}
+           "wuzzuf": "Wuzzuf", "bayt": "Bayt", "indeed": "Indeed", "external_direct": "company site"}
 LOG_SECTION = "## Job Catcher (automatic)"
 
 
@@ -382,7 +382,8 @@ def apply_one(rec, cfg, env, rules, cv_file=None):
     brief = write_brief(rec, rdir, cv_file, key)
     run = agy(FILL.format(brief=brief), rdir / "fill")
     answers = reply_json(run, "status")
-    if not answers and run.get("conversation_id"):  # ended early (e.g. tried a shell command): resume once
+    # ended early (e.g. a denied tool): resume once. Not after the time limit: that only doubles the wait.
+    if not answers and run.get("conversation_id") and run.get("finished_reason") != "print_timeout":
         log(f"[i] no receipt yet, resuming the same session: {rec['title']}")
         run = agy(RESUME.format(brief=brief), rdir / "fill2", conversation=run["conversation_id"])
         answers = reply_json(run, "status")

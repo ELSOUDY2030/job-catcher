@@ -79,6 +79,18 @@ a. If it asks to log in or register: stop with status "needs_you" (log in to Bay
 b. If it says "Applied" or the job is closed: status "skipped".
 c. Click "Apply", answer every question from the facts, attach {cv_file} if asked, and stop before the final
    submit button.""",
+    "indeed": """Indeed (a wizard of several short pages; you are logged in to Indeed in Edge):
+a. On the job page: if it says "Applied", "You applied" or the job is closed/expired: status "skipped".
+b. "Apply on company site": click it, switch to the new tab with browser_tabs, then follow the external
+   site steps below. "Apply now" / "Easy apply": click it and continue here.
+c. If Indeed asks to sign in or verify an email/SMS code: stop, status "needs_you".
+d. On EACH page: browser_find the field labels of that page, fill them from the facts, then click "Continue".
+   Phone country / dropdowns that are not a <select>: click the box, then click the option.
+   Resume page: choose "Upload a resume" / "Resume options" > upload, and upload {cv_file} (see the upload rule).
+   "Relevant experience" / optional pages: "Continue" (or "Skip") without adding anything.
+e. Stop on "Please review your application" (its button is "Submit your application").
+
+""" + EXTERNAL,
     "external_direct": EXTERNAL,
 }
 
@@ -91,4 +103,6 @@ def recipe_key(url, html=None):
         return "wuzzuf"
     if "bayt.com" in url:
         return "bayt"
+    if "indeed.com" in url:
+        return "indeed"
     return "external_direct"
