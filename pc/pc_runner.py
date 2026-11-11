@@ -422,5 +422,42 @@ def main():
             save_pc(pc)  # after every job: a crash never loses a result
 
 
+def single_instance():
+    """The scheduled task and --live must never apply at the same time (same job twice).
+    The lock lives as long as the process (released on exit or crash). None = someone else has it."""
+    import msvcrt
+    RECEIPTS.mkdir(exist_ok=True)
+    f = open(RECEIPTS / "runner.lock", "w")
+    try:
+        msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+    except OSError:
+        f.close()
+        return None
+    return f
+
+
+def live(every=30):
+    """`python pc/pc_runner.py --live`: a run every 30 minutes in this window, Ctrl+C stops it."""
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # Arabic notes in a cp1252 console
+    try:
+        while True:
+            start = time.time()
+            try:
+                main()
+            except Exception as e:  # one bad run must not end the loop
+                log(f"[!] run failed: {e}")
+            wait = max(0, start + every * 60 - time.time())
+            log(f"[i] next run at {datetime.now() + timedelta(seconds=wait):%H:%M}  (Ctrl+C to stop)")
+            time.sleep(wait)
+    except KeyboardInterrupt:  # subprocess.run kills the running agy / claude on the way out
+        log("[i] stopped (Ctrl+C)")
+
+
 if __name__ == "__main__":
-    main()
+    lock = single_instance()
+    if lock is None:
+        log("[i] another runner is already working (scheduled task or --live), skipping")
+    elif "--live" in sys.argv:
+        live()
+    else:
+        main()

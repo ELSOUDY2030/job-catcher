@@ -31,7 +31,8 @@ Link: {url}
    List EVERY field on the form, also pre-filled ones (name, email, phone, years, yes/no, salary,
    cover letter text...). This receipt is checked before anything is sent.
    A complete example receipt is {example_file} (read it with your file tool if you want one).
-   Never search folders with commands: write the receipt directly with your file tool.
+   Its folder already exists and is empty: don't look into it or any other folder, just write the
+   file with your file tool.
 """
 
 CV_MADE = ("Use this CV, already tailored to this job: {cv_file} (don't pick another, don't open it). "

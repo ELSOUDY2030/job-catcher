@@ -4,7 +4,8 @@
       "mcp(playwright/*)",
       "read_file(D:\\MY\\cv\\cloude_CV)",
       "write_file(D:\\MY\\cv\\cloude_CV)",
-      "command(regex:python (ats_score|build_cv)\\.py.*)"
+      "command(regex:python (ats_score|build_cv)\\.py.*)",
+      "command(regex:^\\s*(Get-ChildItem|gci|dir|ls|Test-Path)\\b[^;|&>`$()]*$)"
     ],
     "deny": [
       "read_file(D:\\MY\\cv\\cloude_CV\\مشروع\\job-catcher\\.state_key)",
