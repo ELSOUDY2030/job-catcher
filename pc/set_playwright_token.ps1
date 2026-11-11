@@ -9,6 +9,8 @@ try {
     [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
 }
 if (-not $token) { Write-Host "Nothing pasted, nothing saved."; exit 1 }
-[Environment]::SetEnvironmentVariable("PLAYWRIGHT_MCP_EXTENSION_TOKEN", $token.Trim(), "User")
-Write-Host "Saved ($($token.Trim().Length) characters). If the Playwright MCP server is running, close it:"
+# the extension shows "PLAYWRIGHT_MCP_EXTENSION_TOKEN=<token>": keep only the token
+$token = ($token.Trim() -replace '^PLAYWRIGHT_MCP_EXTENSION_TOKEN=', '').Trim()
+[Environment]::SetEnvironmentVariable("PLAYWRIGHT_MCP_EXTENSION_TOKEN", $token, "User")
+Write-Host "Saved ($($token.Length) characters). If the Playwright MCP server is running, close it:"
 Write-Host "the PC runner starts it again with the token on its next cycle."

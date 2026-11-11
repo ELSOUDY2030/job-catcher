@@ -183,7 +183,15 @@ def ensure_mcp(wait=60):
     if not launcher.exists():
         return False
     log("[i] starting the Playwright MCP server")
-    subprocess.Popen(["wscript.exe", str(launcher)], cwd=CV_DIR)
+    env = dict(os.environ)
+    if "PLAYWRIGHT_MCP_EXTENSION_TOKEN" not in env:  # saved by set_playwright_token.ps1 after this process started
+        try:
+            import winreg
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as key:
+                env["PLAYWRIGHT_MCP_EXTENSION_TOKEN"] = winreg.QueryValueEx(key, "PLAYWRIGHT_MCP_EXTENSION_TOKEN")[0]
+        except OSError:
+            pass
+    subprocess.Popen(["wscript.exe", str(launcher)], cwd=CV_DIR, env=env)
     for _ in range(wait // 3):
         time.sleep(3)
         if mcp_up():
