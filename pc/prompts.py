@@ -35,6 +35,11 @@ Link: {url}
    file with your file tool.
 """
 
+RESUME = """Your last step was blocked and ended your run: terminal / shell commands are not allowed, not
+even to check something. Continue the SAME application in the SAME tab from where you stopped, using only
+the playwright browser tools and your file read/write tools. Follow the same instructions as before and
+finish by writing the receipt file {answers_file} (do not press the final Submit)."""
+
 CV_MADE = ("Use this CV, already tailored to this job: {cv_file} (don't pick another, don't open it). "
            "If the site shows saved resumes, upload this file instead.")
 CV_PICK = "Pick ONE CV from cv_menu.md by the job's focus (don't build a new one)."

@@ -39,7 +39,7 @@ import audit                                    # noqa: E402
 import review                                   # noqa: E402
 import cv_maker                                 # noqa: E402
 from concurrent.futures import ThreadPoolExecutor  # noqa: E402
-from prompts import CV_MADE, CV_PICK, FILL, SUBMIT  # noqa: E402
+from prompts import CV_MADE, CV_PICK, FILL, RESUME, SUBMIT  # noqa: E402
 from sources import jobspy_boards, words_regex, wuzzuf  # noqa: E402
 
 RECEIPTS = ROOT / "receipts"
@@ -315,12 +315,16 @@ def apply_one(rec, cfg, env, rules, cv_file=None):
     rdir = RECEIPTS / rec["id"]
     rdir.mkdir(parents=True, exist_ok=True)
     answers_file, result_file = rdir / "answers.json", rdir / "result.json"
-    for f in (answers_file, result_file):
+    for f in (answers_file, result_file, rdir / "agy_fill2.log"):
         f.unlink(missing_ok=True)
     started = time.time()
 
     agy(fill_prompt(rec, answers_file, cv_file), rdir / "agy_fill.log")
     answers = read_json(answers_file)
+    if not answers:  # Flash sometimes runs a (blocked) shell command, which ends its run: resume it once
+        log(f"[i] no receipt yet, resuming the same session: {rec['title']}")
+        agy(RESUME.format(answers_file=answers_file), rdir / "agy_fill2.log", continue_from=rdir / "agy_fill.log")
+        answers = read_json(answers_file)
     if not answers:
         return finish(rec, "needs_you", "Antigravity didn't finish filling the form (no receipt).", env, rdir)
     if answers.get("status") != "ready":
@@ -346,7 +350,8 @@ def apply_one(rec, cfg, env, rules, cv_file=None):
         return finish(rec, "blocked", f"المراجعة لقت مشكلة، فماتبعتش:\n{why}", env, rdir, answers, review_note=review_note)
 
     agy(SUBMIT.format(answers_file=answers_file, result_file=result_file, shot_name=f"{rec['id']}.png"),
-        rdir / "agy_submit.log", continue_from=rdir / "agy_fill.log", minutes=10)
+        rdir / "agy_submit.log", minutes=10,
+        continue_from=rdir / ("agy_fill2.log" if (rdir / "agy_fill2.log").exists() else "agy_fill.log"))
     result = read_json(result_file) or {}
     shot = find_shot(rec["id"], started)
     if result.get("submitted"):
