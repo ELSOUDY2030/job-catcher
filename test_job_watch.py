@@ -353,6 +353,16 @@ assert sc("CS27 BAC+5 - Stage - Data Scientist (H/F)") < cfg["apply"]["auto_min_
 for url in ["https://github.com/ELSOUDY2030/job-catcher.git\n", "https://github.com/ELSOUDY2030/job-catcher",
             "git@github.com:ELSOUDY2030/job-catcher.git"]:
     assert pc_runner.repo_slug(url) == "ELSOUDY2030/job-catcher", url
+log_demo = "| 12 | BrainsStem | AI Engineer | Wuzzuf n0x2wacijoq1 | draft |\n| 13 | Valu | Senior Data Scientist (Cairo) | LinkedIn |"
+assert pc_runner.already_logged({"url": "https://wuzzuf.net/jobs/p/n0x2wacijoq1-ai-engineer-brainsstem", "title": "x",
+                                 "company": "y"}, log_demo)
+assert pc_runner.already_logged({"url": "https://x/1", "title": "Senior Data Scientist", "company": "Valu"}, log_demo)
+assert not pc_runner.already_logged({"url": "https://www.linkedin.com/jobs/view/4489445391", "title": "AI Engineer",
+                                     "company": "Luxoft"}, log_demo)
+from prompts import FILL, SUBMIT
+assert "{" not in FILL.format(cv_dir="D", title="t", company="c", location="l", score=9, url="u",
+                              answers_file="a", example_file="e").split("UTF-8 JSON only")[0]
+assert sc("ML Engineer", "Strong C# and ASP.NET Core required, Greek residents only") < sc("ML Engineer")
 qa = pc_runner.qa_text([{"q": f"Q{i} <b>", "a": "A"} for i in range(20)], limit=15)
 assert qa.count("•") == 15 and "+5" in qa and "&lt;b&gt;" in qa
 print("ok")

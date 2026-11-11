@@ -16,6 +16,7 @@ import html
 import io
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -210,7 +211,7 @@ def ready_to_apply():
     return problems
 
 
-AGY_MODEL = "gemini-3.8-flash-low"  # overridden by [apply] agy_model; list: `agy models`
+AGY_MODEL = "gemini-3.8-flash-medium"  # overridden by [apply] agy_model; list: `agy models`
 
 
 def agy(prompt, log_file, continue_=False, minutes=20):
@@ -220,6 +221,27 @@ def agy(prompt, log_file, continue_=False, minutes=20):
         "--model", AGY_MODEL, "--print-timeout", f"{minutes}m", "--log-file", str(log_file), "-p", prompt]
     subprocess.run(cmd, cwd=CV_DIR, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                    stderr=subprocess.DEVNULL, timeout=(minutes + 5) * 60)
+
+
+EXAMPLE = HERE / "answers.example.json"  # agy reads this instead of searching folders with commands
+APPS_LOG = CV_DIR / "applications_log.md"
+
+
+def already_logged(rec, log_text=None):
+    """Already in applications_log.md (applied, drafted or skipped before)? Then don't spend
+    3-4 minutes of Antigravity on it. Match: the job's id from its URL, or company + title on one line."""
+    if log_text is None:
+        try:
+            log_text = APPS_LOG.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            return False
+    text = log_text.lower()
+    ids = re.findall(r"(?:jobs/view/|jobs/p/|/view/|jk=)([a-z0-9]{6,})", rec.get("url", "").lower())
+    if any(i in text for i in ids):
+        return True
+    company = next((w for w in re.findall(r"\w+", rec.get("company", "").lower()) if len(w) >= 3), "")
+    title = rec.get("title", "").lower().strip()
+    return bool(company and title) and any(company in line and title in line for line in text.splitlines())
 
 
 def read_json(path):
@@ -277,7 +299,8 @@ def apply_one(rec, cfg, env, rules):
     started = time.time()
 
     agy(FILL.format(cv_dir=CV_DIR, title=rec["title"], company=rec["company"], location=rec["location"],
-                    score=rec["score"], url=rec["url"], answers_file=answers_file), rdir / "agy_fill.log")
+                    score=rec["score"], url=rec["url"], answers_file=answers_file, example_file=EXAMPLE),
+        rdir / "agy_fill.log")
     answers = read_json(answers_file)
     if not answers:
         return finish(rec, "needs_you", "Antigravity didn't finish filling the form (no receipt).", env, rdir)
@@ -336,10 +359,13 @@ def main():
     queue = []
     for rec in sorted((r for r in seen.values() if r.get("status") == "queued" and r["id"] not in results),
                       key=lambda r: -r.get("score", 0)):
-        if skip and skip.search(rec["title"]):  # internships etc.: never worth an application
+        reason = ("تدريب (internship): مش بنقدّم عليه" if skip and skip.search(rec["title"])  # never worth it
+                  else "موجودة في applications_log.md (اتقدّم عليها أو اتسابت قبل كده)" if already_logged(rec)
+                  else None)
+        if reason:
             pc["results"][rec["id"]] = {"at": datetime.now(timezone.utc).isoformat(timespec="minutes"),
-                                        "status": "skipped", "note": "تدريب (internship): مش بنقدّم عليه"}
-            log(f"[skipped] {rec['title']} | {rec['company']} (skip_titles)")
+                                        "status": "skipped", "note": reason}
+            log(f"[skipped] {rec['title']} | {rec['company']} ({reason})")
         else:
             queue.append(rec)
     queue = queue[: cfg.get("apply", {}).get("per_cycle", 4)]

@@ -1,7 +1,8 @@
 """What Antigravity (agy -p) is told to do. Two steps, so the answers are checked BEFORE Submit."""
 
 FILL = """You are applying to ONE job for Mohamed Nomer, unattended. Nobody is watching: never guess.
-Use only the playwright MCP browser tools (the user's logged-in Edge) and these files in {cv_dir}:
+Do NOT run terminal / shell commands (they are blocked and stop you). Use only the playwright MCP
+browser tools (the user's logged-in Edge) and your file read/write tools on these files in {cv_dir}:
 - .agents/skills/job-hunter/SKILL.md : follow its sections 2 (screen), 3 (CV) and 4 (apply) exactly
 - candidate_facts.md : the ONLY source for every answer (its rules at the top apply)
 
@@ -21,9 +22,12 @@ Link: {url}
   "questions": [{{"q": "<question exactly as shown>", "a": "<answer exactly as typed or selected>"}}]}}
    List EVERY field on the form, also pre-filled ones (name, email, phone, years, yes/no, salary,
    cover letter text...). This receipt is checked before anything is sent.
+   A complete example receipt is {example_file} (read it with your file tool if you want one).
+   Never search folders with commands: write the receipt directly with your file tool.
 """
 
 SUBMIT = """Continue the SAME application in the SAME browser tab. Its answers were checked and approved.
+Do NOT run terminal / shell commands (they are blocked). Browser tools and file read/write only.
 1. Make sure the form still shows exactly the answers in {answers_file}. If anything differs or a new
    question appeared, do NOT submit: write {result_file} with "submitted": false and the reason.
 2. Press the final Submit / Send / Apply button once and wait for the confirmation.

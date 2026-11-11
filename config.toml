@@ -14,7 +14,7 @@ summary_minutes = 60
 auto_min_score = 8   # jobs scoring this or more are queued automatically (🤖); the rest get a 🚀 button
 per_cycle = 4        # max applications per 30-minute PC cycle (= 8/hour, the job-hunter skill's pace)
 claude_review = true # answers the rule check can't verify are reviewed by `claude -p` before Submit
-agy_model = "gemini-3.8-flash-low"  # Antigravity model for applying (`agy models` lists them). 2.3x faster
+agy_model = "gemini-3.8-flash-medium"  # Antigravity model for applying (`agy models` lists them). Flash: 2.3x faster
                                     # than gemini-4-argon-medium in our test; try claude-sonnet-5-5-low too
 trigger_github = true # the PC starts the GitHub run every 30 min (GitHub's own schedule skips most runs)
 notify_each = false  # false: results only in the hourly summary (screenshots stay in receipts/<id>/ on your PC)
@@ -116,6 +116,18 @@ min_score = 4              # don't send jobs below this (0 = everything). 2026-1
 "full stack" = -1
 "product manager" = -2
 "product owner" = -2
+# hard requirements the CV doesn't meet (both test applications on 2026-11-11 were skipped for these)
+"c#" = -4
+"asp.net" = -4
+".net core" = -4
+"sql server" = -2
+"residents only" = -4
+"greek residents" = -4
+"must be a resident" = -4
+"citizens only" = -4
+"eu citizens" = -4
+"eu work permit" = -4
+"right to work in the eu" = -4
 "intern" = -4
 "internship" = -4
 # internships / apprenticeships in other languages (they reached the auto-apply queue at ⭐ 8)
