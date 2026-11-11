@@ -142,14 +142,20 @@ def make_record(key, job, score, now, auto_min_score=None):
     }
 
 
-def apply_pc_results(seen, pc):
-    """Your PC reports what happened to queued jobs (applied / needs_you / blocked / skipped)."""
+def apply_pc_results(seen, pc, now=None):
+    """Your PC reports what happened to queued jobs (applied / needs_you / blocked / skipped).
+
+    status_at = when GitHub learned it (so the hourly summary never misses a result the PC
+    reported late); done_at = when the PC did it.
+    """
     by_id = {rec["id"]: rec for rec in seen.values()}
     changed = 0
     for job_id, result in (pc.get("results") or {}).items():
         rec = by_id.get(job_id)
         if rec and rec.get("status") == "queued":  # a later manual ✅/❌ from you always wins
-            rec.update(status=result["status"], status_at=result.get("at", ""), note=result.get("note", ""))
+            rec.update(status=result["status"], done_at=result.get("at", ""), note=result.get("note", ""),
+                       proof=result.get("proof", ""),
+                       status_at=now.isoformat(timespec="minutes") if now else result.get("at", ""))
             changed += 1
     return changed
 
@@ -187,7 +193,8 @@ def main():
             telegram_bot.sync_presses(token, chat_id, state, seen, now)
         except Exception as e:
             print(f"[!] telegram buttons: {e}", file=sys.stderr)
-    print(f"[i] pc: {apply_pc_results(seen, pc_feed.load(cfg.get('pc_feed')))} application results from your PC")
+    pc = pc_feed.load(cfg.get("pc_feed"))
+    print(f"[i] pc: {apply_pc_results(seen, pc, now)} application results from your PC")
 
     jobs = collect(cfg, now, ignore_schedule=dry_run)
     for job in jobs:  # still listed -> remember longer (undated jobs would come back after KEEP_DAYS)
@@ -199,37 +206,62 @@ def main():
     min_score = cfg.get("score", {}).get("min_score", 0)
     ranked = sorted(((scoring.score(job, compiled, cfg), key, job) for key, job in select_new(jobs, cfg, seen).items()),
                     key=lambda item: -item[0])  # best match first
+    low = [item for item in ranked if item[0] < min_score]
     ranked = [item for item in ranked if item[0] >= min_score]
-    cap = cfg.get("max_messages_per_run", 40)  # best first; the rest stay unsent and come back next run
-    print(f"[i] {len(ranked)} new jobs" + (f", sending the best {cap} now" if len(ranked) > cap else ""))
-    ranked = ranked[:cap]
-
+    summary_mode = cfg.get("telegram", {}).get("mode", "summary") == "summary"
     auto_min = cfg.get("apply", {}).get("auto_min_score")
-    for score, key, job in ranked:
-        record = make_record(key, job, score, now, auto_min)
-        text = format_job(job, score, queued=record["auto"])
-        if dry_run:
-            print(text, end="\n\n")
-            seen[key] = record
-            continue
-        try:
-            record["msg"] = telegram_bot.send(token, chat_id, text, telegram_bot.buttons(record["id"], record["status"]))
-        except Exception as e:  # not marked seen, so it is retried next run
-            print(f"[!] send failed for {job['url']}: {e}", file=sys.stderr)
-            continue
-        seen[key] = record
-        time.sleep(1.1)  # Telegram allows ~1 message/second per chat
 
-    if dry_run:
-        print("----- digest preview -----\n" + telegram_bot.digest(seen, now))
-        return
-    # first run at/after the hour (GitHub cron can be late or skip a run)
-    if now.hour >= cfg.get("digest_hour_utc", 7) and state.get("last_digest") != today:
-        try:
-            telegram_bot.send(token, chat_id, telegram_bot.digest(seen, now))
-            state["last_digest"] = today
-        except Exception as e:
-            print(f"[!] digest: {e}", file=sys.stderr)
+    if summary_mode:
+        # no message per job: everything is recorded now and reported in the hourly summary
+        for score, key, job in low:  # remembered small, so a weak job is counted once and never again
+            seen[key] = {"id": short_id(key), "status": "low", "score": score,
+                         "first_seen": now.isoformat(timespec="minutes"), "last_seen": today}
+        for score, key, job in ranked:
+            seen[key] = make_record(key, job, score, now, auto_min)
+        print(f"[i] {len(ranked)} new jobs recorded (+{len(low)} below min_score), no per-job messages")
+    else:
+        cap = cfg.get("max_messages_per_run", 40)  # best first; the rest stay unsent and come back next run
+        print(f"[i] {len(ranked)} new jobs" + (f", sending the best {cap} now" if len(ranked) > cap else ""))
+        for score, key, job in ranked[:cap]:
+            record = make_record(key, job, score, now, auto_min)
+            if dry_run:
+                print(format_job(job, score, queued=record["auto"]), end="\n\n")
+                seen[key] = record
+                continue
+            try:
+                record["msg"] = telegram_bot.send(token, chat_id, format_job(job, score, queued=record["auto"]),
+                                                  telegram_bot.buttons(record["id"], record["status"]))
+            except Exception as e:  # not marked seen, so it is retried next run
+                print(f"[!] send failed for {job['url']}: {e}", file=sys.stderr)
+                continue
+            seen[key] = record
+            time.sleep(1.1)  # Telegram allows ~1 message/second per chat
+
+    if summary_mode:
+        minutes = cfg.get("telegram", {}).get("summary_minutes", 60)
+        since = state.get("summary_from") or (now - timedelta(minutes=minutes)).isoformat(timespec="minutes")
+        text, markup = telegram_bot.summary(seen, since, now, cfg, pc)
+        if dry_run:
+            print("----- summary preview -----\n" + text)
+            return
+        # runs are every 30 min (or late): send once at least `minutes` - 5 have passed
+        if now - datetime.fromisoformat(since) >= timedelta(minutes=minutes - 5):
+            try:
+                telegram_bot.send(token, chat_id, text, markup)
+                state["summary_from"] = now.isoformat(timespec="minutes")
+            except Exception as e:  # window not moved: the next run sends it, nothing lost
+                print(f"[!] summary: {e}", file=sys.stderr)
+    else:
+        if dry_run:
+            print("----- digest preview -----\n" + telegram_bot.digest(seen, now))
+            return
+        # first run at/after the hour (GitHub cron can be late or skip a run)
+        if now.hour >= cfg.get("digest_hour_utc", 7) and state.get("last_digest") != today:
+            try:
+                telegram_bot.send(token, chat_id, telegram_bot.digest(seen, now))
+                state["last_digest"] = today
+            except Exception as e:
+                print(f"[!] digest: {e}", file=sys.stderr)
     save_json(SEEN_FILE, seen)
     save_json(STATE_FILE, state)
 

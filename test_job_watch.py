@@ -283,6 +283,41 @@ assert apply_pc_results(seen2, pc_report) == 1
 assert rec_hi["status"] == "applied" and rec_hi["note"] == "Thanks!" and rec_lo["status"] == "applied"
 
 # --- supervisor engine (made-up rules here; the real ones are private in pc/facts_rules.toml)
+# --- hourly summary: one message with everything since the last one
+from datetime import timedelta
+t0 = datetime(2026, 11, 11, 7, 0, tzinfo=UTC)
+since, at = t0.isoformat(timespec="minutes"), (t0 + timedelta(minutes=30)).isoformat(timespec="minutes")
+def rec(title, score, status, **extra):
+    j = make_job(title, "Co" + title[:3], "Cairo", f"https://x/{title}", None, "t")
+    r = make_record(job_key(j), j, score, t0 + timedelta(minutes=10), 8)
+    r.update(status=status, **extra)
+    return job_key(j), r
+seen3 = dict([
+    rec("LLM Engineer", 9, "applied", status_at=at),
+    rec("Vision Engineer", 9, "needs_you", status_at=at, note="CAPTCHA on the last step"),
+    rec("RAG Engineer", 8, "blocked", status_at=at, note="Python 6 -> must be 5"),
+    rec("ML Intern", 8, "skipped", status_at=at, note="title is in [apply] skip_titles"),
+    rec("Data Scientist", 9, "queued"),
+    rec("AI Developer", 7, "new"), rec("NLP Engineer", 6, "new"),
+    ("weak|x", {"id": "w1", "status": "low", "score": 2, "first_seen": at, "last_seen": "2026-11-11"}),
+    rec("Old Applied", 9, "applied", status_at="2026-11-10T20:00+00:00"),  # before the window: not listed
+])
+pc_ok = {"scanned_at": at, "warnings": ["جهازك مش قادر يقدّم: Playwright MCP not running"]}
+text, markup = telegram_bot.summary(seen3, since, t0 + timedelta(hours=1), cfg, pc_ok)
+assert "9:00 ص" in text and "10:00 ص" in text, text                     # Cairo time (UTC+2)
+assert "<b>✅ اتقدّم (1)</b>" in text and "LLM Engineer" in text and "Old Applied" not in text
+assert "ماتقدّمش على 3" in text and "CAPTCHA on the last step" in text and "Python 6 -&gt; must be 5" in text
+assert "⏳ <b>1</b> وظيفة في الطابور" in text and "🔇 1 ضعاف" in text and "Playwright MCP" in text
+assert text.index("AI Developer") < text.index("NLP Engineer")             # best first
+assert [b["callback_data"][:2] for b in markup["inline_keyboard"][0]] == ["Q:", "Q:"]
+stale, _ = telegram_bot.summary(seen3, since, t0 + timedelta(hours=3), cfg, {"scanned_at": at})
+assert "جهازك مابعتش حاجة" in stale                                       # PC silent > 90 min
+quiet, no_buttons = telegram_bot.summary({}, since, t0 + timedelta(hours=1), cfg, {})
+assert "مفيش جديد" in quiet and no_buttons is None
+ai_dev = next(r for r in seen3.values() if r.get("title") == "AI Developer")
+telegram_bot.apply_presses([press(f"Q:{ai_dev['id']}")], 42, seen3, t0)
+assert ai_dev["status"] == "queued"                                        # 🚀 inside the summary works
+
 import sys
 sys.path.insert(0, str(job_watch.HERE / "pc"))
 import audit

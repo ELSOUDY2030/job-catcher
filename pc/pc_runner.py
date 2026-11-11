@@ -200,12 +200,15 @@ def finish(rec, status, note, env, rdir, answers=None, shot=None, review_note=""
     body = qa_text((answers or {}).get("questions", []))
     if shot:
         shutil.copy(shot, rdir / "confirmation.png")
-        notify(env, head, photo=rdir / "confirmation.png")
-        if body:
-            notify(env, f"📝 <b>الأسئلة والإجابات</b>\n{body}\n{review_note}")
-    else:
-        notify(env, "\n\n".join(p for p in (head, body, review_note) if p))
-    entry = {"at": datetime.now(timezone.utc).isoformat(timespec="minutes"), "status": status, "note": (note or "")[:300]}
+    if env.get("notify_each"):  # [apply] notify_each = true: a message per application (else: hourly summary only)
+        if shot:
+            notify(env, head, photo=rdir / "confirmation.png")
+            if body:
+                notify(env, f"📝 <b>الأسئلة والإجابات</b>\n{body}\n{review_note}")
+        else:
+            notify(env, "\n\n".join(p for p in (head, body, review_note) if p))
+    entry = {"at": datetime.now(timezone.utc).isoformat(timespec="minutes"), "status": status, "note": (note or "")[:300],
+             "proof": f"receipts/{rdir.name}/confirmation.png" if shot else ""}
     with (RECEIPTS / "index.jsonl").open("a", encoding="utf-8") as f:  # one line per job, for a quick review later
         f.write(json.dumps({"id": rec["id"], "title": rec["title"], "company": rec["company"], "url": rec["url"],
                             **entry}, ensure_ascii=False) + "\n")
@@ -262,13 +265,14 @@ def apply_one(rec, cfg, env, rules):
 def main():
     cfg = tomllib.loads((ROOT / "config.toml").read_text(encoding="utf-8"))
     env = json.loads(ENV_FILE.read_text(encoding="utf-8"))
+    env["notify_each"] = cfg.get("apply", {}).get("notify_each", False)
     pc = load_pc()
     results = pc.get("results", {})
     cutoff = (datetime.now(timezone.utc) - timedelta(days=KEEP_DAYS)).isoformat()
     results = {k: v for k, v in results.items() if v.get("at", "") >= cutoff}
 
     pc = {"jobs": scan(cfg), "results": results, "scanned_at": datetime.now(timezone.utc).isoformat(timespec="minutes"),
-          "warned": pc.get("warned", "")}
+          "warned": pc.get("warned", ""), "warnings": []}  # warnings show up in the hourly summary
     save_pc(pc)  # GitHub gets the new Wuzzuf/Bayt jobs even if applying fails below
 
     seen = load_seen()
@@ -278,7 +282,7 @@ def main():
                       key=lambda r: -r.get("score", 0)):
         if skip and skip.search(rec["title"]):  # internships etc.: never worth an application
             pc["results"][rec["id"]] = {"at": datetime.now(timezone.utc).isoformat(timespec="minutes"),
-                                        "status": "skipped", "note": "title is in [apply] skip_titles"}
+                                        "status": "skipped", "note": "تدريب (internship): مش بنقدّم عليه"}
             log(f"[skipped] {rec['title']} | {rec['company']} (skip_titles)")
         else:
             queue.append(rec)
@@ -291,7 +295,8 @@ def main():
     if problems:
         today = datetime.now().date().isoformat()
         log(f"[!] can't apply: {problems}")
-        if pc["warned"] != today:  # at most one warning a day
+        pc["warnings"] = [f"جهازك مش قادر يقدّم: {p}" for p in problems]  # -> hourly summary
+        if env["notify_each"] and pc["warned"] != today:  # old mode: at most one separate warning a day
             notify(env, "⚠️ <b>جهازك مش قادر يقدّم دلوقتي</b>\n" + "\n".join(f"• {html.escape(p)}" for p in problems)
                    + f"\n{len(queue)} وظيفة مستنية في الطابور.")
             pc["warned"] = today

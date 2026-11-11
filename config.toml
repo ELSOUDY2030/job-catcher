@@ -1,13 +1,21 @@
 # Job Catcher settings. Edit this file, not the code.
 
 hours_old = 24  # default: only jobs posted in the last N hours
-max_messages_per_run = 40  # best-scored first; extra new jobs wait for the next run (no flood)
-digest_hour_utc = 7  # daily summary on Telegram: 07 UTC = 9 AM Cairo (winter), 10 AM in summer time
+max_messages_per_run = 40  # mode "each" only: best-scored first, the rest wait for the next run
+digest_hour_utc = 7  # mode "each" only: daily digest at 07 UTC = 9 AM Cairo (winter)
+
+[telegram]
+# "summary" = ONE message every summary_minutes: what was applied to, what wasn't and why, the best
+#             jobs left (with 🚀 buttons). "each" = one message per job (the old way, floods the chat).
+mode = "summary"
+summary_minutes = 60
 
 [apply]  # done on YOUR PC by pc/pc_runner.py (Antigravity + the job-hunter skill), every 30 minutes
 auto_min_score = 8   # jobs scoring this or more are queued automatically (🤖); the rest get a 🚀 button
 per_cycle = 4        # max applications per 30-minute PC cycle (= 8/hour, the job-hunter skill's pace)
 claude_review = true # answers the rule check can't verify are reviewed by `claude -p` before Submit
+notify_each = false  # false: results only in the hourly summary (screenshots stay in receipts/<id>/ on your PC)
+                     # true: also a Telegram message per application, with the screenshot + questions/answers
 # last check on the PC before Antigravity starts: queued jobs whose title has one of these are skipped
 # (not plain "stage": it would also skip "early-stage startup" titles)
 skip_titles = ["intern", "internship", "stage -", "stage ingénieur", "stage data", "stagiaire", "bac+5",
