@@ -37,7 +37,9 @@ sys.path[:0] = [str(ROOT), str(HERE)]
 
 import audit                                    # noqa: E402
 import review                                   # noqa: E402
-from prompts import FILL, SUBMIT                # noqa: E402
+import cv_maker                                 # noqa: E402
+from concurrent.futures import ThreadPoolExecutor  # noqa: E402
+from prompts import CV_MADE, CV_PICK, FILL, SUBMIT  # noqa: E402
 from sources import jobspy_boards, words_regex, wuzzuf  # noqa: E402
 
 RECEIPTS = ROOT / "receipts"
@@ -301,7 +303,13 @@ def finish(rec, status, note, env, rdir, answers=None, shot=None, review_note=""
     return entry
 
 
-def apply_one(rec, cfg, env, rules):
+def fill_prompt(rec, answers_file, cv_file=None):
+    return FILL.format(cv_dir=CV_DIR, title=rec["title"], company=rec["company"], location=rec["location"],
+                       score=rec["score"], url=rec["url"], answers_file=answers_file, example_file=EXAMPLE,
+                       cv_step=CV_MADE.format(cv_file=cv_file) if cv_file else CV_PICK)
+
+
+def apply_one(rec, cfg, env, rules, cv_file=None):
     rdir = RECEIPTS / rec["id"]
     rdir.mkdir(parents=True, exist_ok=True)
     answers_file, result_file = rdir / "answers.json", rdir / "result.json"
@@ -309,9 +317,7 @@ def apply_one(rec, cfg, env, rules):
         f.unlink(missing_ok=True)
     started = time.time()
 
-    agy(FILL.format(cv_dir=CV_DIR, title=rec["title"], company=rec["company"], location=rec["location"],
-                    score=rec["score"], url=rec["url"], answers_file=answers_file, example_file=EXAMPLE),
-        rdir / "agy_fill.log")
+    agy(fill_prompt(rec, answers_file, cv_file), rdir / "agy_fill.log")
     answers = read_json(answers_file)
     if not answers:
         return finish(rec, "needs_you", "Antigravity didn't finish filling the form (no receipt).", env, rdir)
@@ -396,13 +402,21 @@ def main():
         save_pc(pc)
         return
     rules = audit.load_rules()
-    for rec in queue:
-        log(f"[>] applying: {rec['title']} | {rec['company']} | ⭐ {rec['score']}")
-        try:
-            pc["results"][rec["id"]] = apply_one(rec, cfg, env, rules)
-        except Exception as e:  # one job going wrong must not stop the others
-            pc["results"][rec["id"]] = finish(rec, "needs_you", f"runner error: {e}", env, RECEIPTS / rec["id"])
-        save_pc(pc)  # after every job: a crash never loses a result
+    # Sonnet makes the NEXT job's CV while Antigravity applies to this one ([apply] cv_model = "" turns it off)
+    cv_model = cfg.get("apply", {}).get("cv_model", "claude-sonnet-5-5")
+    with ThreadPoolExecutor(max_workers=1) as cv_pool:
+        make_cv = lambda r: cv_pool.submit(cv_maker.make, r, FACTS, cv_model, log) if cv_model else None  # noqa: E731
+        next_cv = make_cv(queue[0])
+        for i, rec in enumerate(queue):
+            cv_file = next_cv.result() if next_cv else None
+            next_cv = make_cv(queue[i + 1]) if i + 1 < len(queue) else None
+            log(f"[>] applying: {rec['title']} | {rec['company']} | ⭐ {rec['score']} | CV: "
+                f"{cv_file.name if cv_file else 'from cv_menu.md'}")
+            try:
+                pc["results"][rec["id"]] = apply_one(rec, cfg, env, rules, cv_file)
+            except Exception as e:  # one job going wrong must not stop the others
+                pc["results"][rec["id"]] = finish(rec, "needs_you", f"runner error: {e}", env, RECEIPTS / rec["id"])
+            save_pc(pc)  # after every job: a crash never loses a result
 
 
 if __name__ == "__main__":

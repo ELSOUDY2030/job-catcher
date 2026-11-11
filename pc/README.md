@@ -8,6 +8,8 @@
 3. يبعتلك على Telegram: **سكرين الإثبات + الأسئلة اللي اتسألت + إجاباته + نتيجة المراجعة**.
 
 ```
+Claude Sonnet (cv_maker.py) بيعمل CV الوظيفة الجاية ── في نفس الوقت ── agy بيقدّم على الحالية
+        │  (لو فشل: agy يختار CV جاهز من cv_menu.md)
 agy (يملأ ويقف قبل Submit) ── answers.json
         │
 audit.py: قواعد candidate_facts (ببلاش، فوري)
@@ -25,12 +27,14 @@ agy (Submit + سكرين) ── result.json ── Telegram
    - وبيمنع: قراية مفتاح التشفير، والكتابة في `candidate_facts.md`.
 2. **Telegram للجهاز:** `.venv\Scripts\python pc\setup_pc.py`. هيطلب الـ token مخفي، وبعدين ابعت للبوت أي رسالة.
 3. **Playwright:** شغّل `D:\MY\cv\cloude_CV\start_playwright_mcp.bat` وسيب Edge مفتوح ومسجّل دخول.
+   علشان رفع الـ CV يشتغل: `edge://extensions` ← Playwright MCP Bridge ← Details ← فعّل **Allow access to file URLs**.
 4. **الجدولة:** من PowerShell شغّل `pc\install_task.ps1`، فبيتشغل كل 30 دقيقة.
 
 ## الملفات
 - `pc_runner.py`: البرنامج نفسه.
 - `audit.py`: المراقب.
 - `review.py`: مراجعة Claude.
+- `cv_maker.py`: Sonnet بيكتب العنوان والـ profile وترتيب المهارات والمشاريع من `candidate_facts.md` بس، و `build_cv.py` يطلّع الـ PDF في `cloude_CV\auto_cvs\`.
 - `prompts.py`: التعليمات اللي بتروح لـ Antigravity.
 - `facts_rules.toml`: **ملف خاص بيك ومبيترفعش.** فيه الإجابات المقبولة من `candidate_facts.md`، ولو عدّلت `candidate_facts` لازم تعدّله معاه.
 - `receipts/<id>/` على جهازك فيه:

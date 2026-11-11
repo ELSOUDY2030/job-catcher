@@ -14,6 +14,7 @@ summary_minutes = 60
 auto_min_score = 8   # jobs scoring this or more are queued automatically (🤖); the rest get a 🚀 button
 per_cycle = 4        # max applications per 30-minute PC cycle (= 8/hour, the job-hunter skill's pace)
 claude_review = true # answers the rule check can't verify are reviewed by `claude -p` before Submit
+cv_model = "claude-sonnet-5-5"  # makes the next job's CV while agy applies (pc/cv_maker.py); "" = ready CVs only
 agy_model = "gemini-3.8-flash-medium"  # Antigravity model for applying (`agy models` lists them). Flash: 2.3x faster
                                     # than gemini-4-argon-medium in our test; try claude-sonnet-5-5-low too
 trigger_github = true # the PC starts the GitHub run every 30 min (GitHub's own schedule skips most runs)

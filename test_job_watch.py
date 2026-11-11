@@ -359,9 +359,17 @@ assert pc_runner.already_logged({"url": "https://wuzzuf.net/jobs/p/n0x2wacijoq1-
 assert pc_runner.already_logged({"url": "https://x/1", "title": "Senior Data Scientist", "company": "Valu"}, log_demo)
 assert not pc_runner.already_logged({"url": "https://www.linkedin.com/jobs/view/4489445391", "title": "AI Engineer",
                                      "company": "Luxoft"}, log_demo)
-from prompts import FILL, SUBMIT
-assert "{" not in FILL.format(cv_dir="D", title="t", company="c", location="l", score=9, url="u",
-                              answers_file="a", example_file="e").split("UTF-8 JSON only")[0]
+job_demo = {"title": "t", "company": "c", "location": "l", "score": 9, "url": "u"}
+for cv in (None, "X.pdf"):
+    p = pc_runner.fill_prompt(job_demo, "a.json", cv)
+    assert "{" not in p.split("UTF-8 JSON only")[0] and (("X.pdf" in p) == bool(cv)) and (("cv_menu.md by" in p) != bool(cv))
+import cv_maker
+cv_ok = {"title": "AI Engineer | Agents", "profile": "Builds LLM apps.", "skills": cv_maker.SKILLS[::-1],
+         "projects": cv_maker.PROJECTS}
+assert cv_maker.check(cv_ok, ["LangSmith"]) == []
+assert cv_maker.check({**cv_ok, "profile": "Uses LangSmith daily"}, ["LangSmith"])  # never-claim word
+assert cv_maker.check({**cv_ok, "skills": ["LLMs"]}, []) and cv_maker.check(None, [])
+assert cv_maker.file_name("Qatar Insurance Group") == "Qatar_Insurance_Group"
 assert sc("ML Engineer", "Strong C# and ASP.NET Core required, Greek residents only") < sc("ML Engineer")
 qa = pc_runner.qa_text([{"q": f"Q{i} <b>", "a": "A"} for i in range(20)], limit=15)
 assert qa.count("•") == 15 and "+5" in qa and "&lt;b&gt;" in qa

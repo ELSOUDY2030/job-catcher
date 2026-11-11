@@ -5,7 +5,7 @@ Do NOT run terminal / shell commands (they are blocked and stop you). Use only t
 browser tools (the user's logged-in Edge) and your file read/write tools on these files in {cv_dir}:
 - .agents/skills/job-hunter/SKILL.md : follow its sections 2 (screen) and 4 (apply)
 - candidate_facts.md : the ONLY source for every answer (its rules at the top apply)
-- cv_menu.md : the CV to use (replaces skill section 3 here)
+- cv_menu.md : ready CVs, only if step 2 says to pick one (replaces skill section 3 here)
 Already done for you, so SKIP these (they cost minutes): applications_log.md was checked and this
 job is not in it, so don't read it; prompt_for_other_ai.md, build_cv.py, ats_score.py and the CV
 PDFs: don't open them.
@@ -15,12 +15,13 @@ Link: {url}
 
 1. Open the link in a NEW tab. Screen it (skill section 2). If it is not a fit or closed:
    write the receipt with status "skipped" and the reason, then stop.
-2. Pick ONE CV from cv_menu.md by the job's focus (don't build a new one).
+2. {cv_step}
 3. Fill the application (skill section 4) but DO NOT press the final Submit / Send / Apply button.
    Stop on the last page before it and leave that tab open.
    Big pages (LinkedIn): don't read a long snapshot page by page. Look for the exact text you need
    (the CV file name, the field label) and act on that element. If the site lists saved resumes and
-   the chosen CV isn't there, upload it from {cv_dir} with browser_file_upload.
+   the chosen CV isn't there, upload it with browser_file_upload. If an upload fails, don't retry
+   or try other ways: stop with status "needs_you" and the error.
 4. Stop with status "needs_you" (put the exact step and link in "reason") if you meet: a login,
    password, email or SMS code, CAPTCHA, account creation, or ANY question whose answer is not
    in candidate_facts.md.
@@ -32,6 +33,10 @@ Link: {url}
    A complete example receipt is {example_file} (read it with your file tool if you want one).
    Never search folders with commands: write the receipt directly with your file tool.
 """
+
+CV_MADE = ("Use this CV, already tailored to this job: {cv_file} (don't pick another, don't open it). "
+           "If the site shows saved resumes, upload this file instead.")
+CV_PICK = "Pick ONE CV from cv_menu.md by the job's focus (don't build a new one)."
 
 SUBMIT = """Continue the SAME application in the SAME browser tab. Its answers were checked and approved.
 Do NOT run terminal / shell commands (they are blocked). Browser tools and file read/write only.

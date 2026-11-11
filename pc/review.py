@@ -11,15 +11,21 @@ from prompts import REVIEW
 CLAUDE = shutil.which("claude") or str(Path.home() / ".local" / "bin" / "claude.exe")
 
 
-def parse(text):
-    """First JSON object in Claude's reply -> problems list, or None if there is none."""
+def parse_json(text):
+    """First JSON object in Claude's reply, or None if there is none."""
     start = text.find("{")
     if start < 0:
         return None
     try:
-        return json.JSONDecoder().raw_decode(text, start)[0].get("problems")
-    except (ValueError, AttributeError):
+        return json.JSONDecoder().raw_decode(text, start)[0]
+    except ValueError:
         return None
+
+
+def parse(text):
+    """-> problems list, or None if the reply has no usable JSON."""
+    obj = parse_json(text)
+    return obj.get("problems") if isinstance(obj, dict) else None
 
 
 def review(record, unsure, facts_file, timeout=300):
