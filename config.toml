@@ -23,7 +23,7 @@ notify_each = false  # false: results only in the hourly summary (screenshots st
 # last check on the PC before Antigravity starts: queued jobs whose title has one of these are skipped
 # (not plain "stage": it would also skip "early-stage startup" titles)
 skip_titles = ["intern", "internship", "stage -", "stage ingénieur", "stage data", "stagiaire", "bac+5",
-               "alternance", "praktikum", "werkstudent", "prácticas", "becario", "tirocinio", "trainee"]
+               "alternance", "praktikum", "werkstudent", "prácticas", "becario", "tirocinio", "trainee", "apprenticeship", "apprentice"]
 
 [filter]
 # The job TITLE must contain one of these (whole word, any case).
