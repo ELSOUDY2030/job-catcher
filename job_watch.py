@@ -9,6 +9,7 @@ and ignores every_hours so every enabled source runs once.
 import hashlib
 import html
 import json
+import math
 import os
 import re
 import sys
@@ -68,6 +69,16 @@ def is_due(section, now):
     """every_hours = 6 -> once at 00, 06, 12, 18 UTC (first half-hour run only). Default: every run."""
     every = section.get("every_hours", 1)
     return every == 1 or (now.hour % every == 0 and now.minute < 30)
+
+
+def search_hours(last, now, cap):
+    """LinkedIn/Indeed only ask for jobs since the last run (+15 min for the run itself), in whole hours
+    (JobSpy's unit, min 1). A missed run makes the next window bigger, so nothing falls through.
+    ponytail: only for JobSpy; other boards give a date without a time, so they keep the 24 h filter."""
+    if not last:
+        return cap
+    gone = (now - datetime.fromisoformat(last)).total_seconds() / 3600 + 0.25
+    return max(1, min(cap, math.ceil(gone)))
 
 
 def collect(cfg, now, ignore_schedule=False):
@@ -196,7 +207,12 @@ def main():
     pc = pc_feed.load(cfg.get("pc_feed"))
     print(f"[i] pc: {apply_pc_results(seen, pc, now)} application results from your PC")
 
+    js = cfg.setdefault("jobspy", {})
+    js["query_hours"] = search_hours(state.get("last_search"), now, js.get("hours_old", cfg["hours_old"]))
+    print(f"[i] LinkedIn/Indeed: jobs from the last {js['query_hours']} h")
     jobs = collect(cfg, now, ignore_schedule=dry_run)
+    if not dry_run:
+        state["last_search"] = now.isoformat(timespec="minutes")
     for job in jobs:  # still listed -> remember longer (undated jobs would come back after KEEP_DAYS)
         key = job_key(job)
         if key in seen:

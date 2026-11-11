@@ -1,4 +1,4 @@
-"""A CV tailored to one job, made by Claude Sonnet (`claude -p`) while Antigravity applies to the job before it.
+"""A CV tailored to one job, made by Claude Sonnet (`claude -p`; Gemini if Claude is out) while Antigravity applies to the job before it.
 
 Sonnet only writes the headline, the profile paragraph and the ORDER of skills lines and projects
 (same as every variant in build_cv.py); build_cv.build() turns that into the 2-page PDF.
@@ -7,13 +7,12 @@ Any failure -> None, and Antigravity picks a ready CV from cv_menu.md as before.
 import html
 import json
 import re
-import subprocess
 import sys
 import urllib.request
 from pathlib import Path
 
 import audit
-from review import CLAUDE, parse_json
+from review import ask
 
 HERE = Path(__file__).resolve().parent
 CV_DIR = HERE.parents[2]                        # D:\MY\cv\cloude_CV
@@ -97,9 +96,7 @@ def make(rec, facts_file, model="claude-sonnet-5-5", log=print, timeout=600):
                                facts=Path(facts_file).read_text(encoding="utf-8"),
                                cv=plain((CV_DIR / "cv.html").read_text(encoding="utf-8"), limit=20000),
                                skills=json.dumps(SKILLS), projects=json.dumps(PROJECTS))
-        done = subprocess.run([CLAUDE, "-p", "--model", model, "--tools", "", "--output-format", "text"],
-                              input=prompt, text=True, encoding="utf-8", capture_output=True, timeout=timeout)
-        v = parse_json(done.stdout)
+        v, who = ask(prompt, claude_model=model, timeout=timeout)  # Gemini if Claude is out
         why = check(v, audit.load_rules().get("never_claim", []))
         if why:
             log(f"[!] CV for {rec['company']} not used: {'; '.join(why)[:300]}")
@@ -110,7 +107,7 @@ def make(rec, facts_file, model="claude-sonnet-5-5", log=print, timeout=600):
         OUT_DIR.mkdir(exist_ok=True)
         (CV_DIR / f"cv_{name}.html").unlink(missing_ok=True)
         pdf = (CV_DIR / f"Mohamed_Nomer_CV_{name}.pdf").replace(OUT_DIR / f"Mohamed_Nomer_CV_{name}.pdf")
-        log(f"[i] tailored CV ready: {pdf.name} (JD {'read' if jd else 'not found'})")
+        log(f"[i] tailored CV ready ({who}): {pdf.name} (JD {'read' if jd else 'not found'})")
         return pdf
     except Exception as e:  # never stop an application because of the CV
         log(f"[!] CV for {rec.get('company')} failed: {e}")

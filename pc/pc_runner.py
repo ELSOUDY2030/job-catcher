@@ -331,10 +331,11 @@ def apply_one(rec, cfg, env, rules, cv_file=None):
     if verdict["unsure"]:
         if cfg.get("apply", {}).get("claude_review", True):
             try:
-                verdict["problems"] += review.review(rec, verdict["unsure"], FACTS)
-                review_note += f"، و{len(verdict['unsure'])} راجعها Claude"
+                problems, who = review.review(rec, verdict["unsure"], FACTS)
+                verdict["problems"] += problems
+                review_note += f"، و{len(verdict['unsure'])} راجعها {who}"
             except Exception as e:
-                verdict["problems"].append({"q": "-", "a": "-", "why": f"Claude review failed: {e}"})
+                verdict["problems"].append({"q": "-", "a": "-", "why": f"review failed: {e}"})
         else:
             review_note += f"، و{len(verdict['unsure'])} من غير مراجعة"
     (rdir / "audit.json").write_text(json.dumps(verdict, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -359,7 +360,7 @@ def main():
     env = json.loads(ENV_FILE.read_text(encoding="utf-8"))
     env["notify_each"] = cfg.get("apply", {}).get("notify_each", False)
     global AGY_MODEL
-    AGY_MODEL = cfg.get("apply", {}).get("agy_model", AGY_MODEL)
+    AGY_MODEL = review.AGY_MODEL = cfg.get("apply", {}).get("agy_model", AGY_MODEL)
     pc = load_pc()
     results = pc.get("results", {})
     cutoff = (datetime.now(timezone.utc) - timedelta(days=KEEP_DAYS)).isoformat()

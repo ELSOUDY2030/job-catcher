@@ -373,4 +373,10 @@ assert cv_maker.file_name("Qatar Insurance Group") == "Qatar_Insurance_Group"
 assert sc("ML Engineer", "Strong C# and ASP.NET Core required, Greek residents only") < sc("ML Engineer")
 qa = pc_runner.qa_text([{"q": f"Q{i} <b>", "a": "A"} for i in range(20)], limit=15)
 assert qa.count("•") == 15 and "+5" in qa and "&lt;b&gt;" in qa
+from datetime import datetime as _dt, timezone as _tz
+_now = _dt(2026, 11, 11, 12, 7, tzinfo=_tz.utc)
+assert job_watch.search_hours(None, _now, 24) == 24                       # first run: full day
+assert job_watch.search_hours("2026-11-11T11:37+00:00", _now, 24) == 1   # normal 30-min gap
+assert job_watch.search_hours("2026-11-11T09:07+00:00", _now, 24) == 4   # missed runs: bigger window
+assert job_watch.search_hours("2026-11-01T09:07+00:00", _now, 24) == 24  # capped
 print("ok")

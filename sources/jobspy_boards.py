@@ -29,7 +29,8 @@ def _search(sites, term, country, indeed_name, section, cfg):
             search_term=term,
             location=country,
             country_indeed=indeed_name or "usa",  # must be valid even when Indeed isn't searched
-            hours_old=section.get("hours_old", cfg["hours_old"]),
+            # query_hours: only the time since the last run (job_watch.search_hours); the 24 h stay for the filter
+            hours_old=section.get("query_hours") or section.get("hours_old", cfg["hours_old"]),
             results_wanted=section.get("results_wanted", 25),
             verbose=0,
         )
