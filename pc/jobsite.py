@@ -28,15 +28,21 @@ def linkedin_kind(html):
     return "no_button" if html else None
 
 
-SNAPSHOT_RULE = ("Pages are big: never read a whole snapshot page by page. Use browser_find with the exact text "
-                 "you need (a button, a field label, the CV file name) and act on that element.")
+SNAPSHOT_RULE = """Browser rules:
+   - Pages are big: never read a whole snapshot page by page. Use browser_find with the exact text you need
+     (a button, a field label, the CV file name) and act on that element.
+   - Uploading the CV: file inputs are hidden, so never target them. Click the VISIBLE button or area
+     ("Upload", "Upload file", "Attach", "Select file", "Choose file", "drag and drop"): a file chooser opens.
+     Then call browser_file_upload with only "paths": [the CV's full path].
+   - An action that fails: try it ONE more time, then stop with status "needs_you" and the error.
+     Never look for workarounds (no other tools, no JavaScript, no tool documentation files)."""
 
 EXTERNAL = """External application site (Workable, Greenhouse, Lever, Ashby, SmartRecruiters, Recruitee, Breezy,
 BambooHR, Pinpoint, a company form):
 a. Find and click the apply button ("Apply", "Apply for this job", "I'm interested").
 b. If the site asks to log in, create an account, verify an email/SMS code or solve a CAPTCHA: stop, status
    "needs_you", and say which step.
-c. Fill every field from the facts. Upload the CV with browser_file_upload on the resume/CV file input.
+c. Fill every field from the facts. Upload the CV (see the upload rule).
    Decline non-essential cookies. Untick marketing / newsletter boxes.
 d. Stop on the page where the only step left is the final "Submit" / "Submit application" / "Send"."""
 
@@ -46,8 +52,8 @@ a. On the job page: if it says "Applied", "Application submitted" or "No longer 
    stop with status "skipped" and that text.
 b. browser_find "Easy Apply" and click it. A dialog opens.
 c. On every page of the dialog: fill or fix every field from the facts (pre-filled answers can be wrong).
-   Resume page: if {cv_name} is in the list, select it; if not, click "Upload resume" and
-   browser_file_upload {cv_file}. If an upload fails, stop with status "needs_you" and the error.
+   Resume page: if {cv_name} is in the list, select it; if not, click "Upload resume" and upload
+   {cv_file} (see the upload rule).
    Replace any old cover letter written for another company.
 d. Click "Next" / "Review" until the page whose button is "Submit application". Untick "Follow {company}".
 e. Stop there.""",
@@ -61,7 +67,7 @@ c. Then follow the external site steps below.
 a. On the job page: if it says "No longer accepting applications", "Applied" or shows no apply button, stop with
    status "skipped" and what it says.
 b. Otherwise click the "Easy Apply" or "Apply" button that is there and continue like a normal application:
-   fill every field from the facts, upload {cv_file} with browser_file_upload when asked, and stop on the page
+   fill every field from the facts, upload {cv_file} when asked (see the upload rule), and stop on the page
    whose only step left is the final submit.""",
     "wuzzuf": """Wuzzuf:
 a. If the page shows "Log in" / "Sign up" instead of your account: stop with status "needs_you" (log in to

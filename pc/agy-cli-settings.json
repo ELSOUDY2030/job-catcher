@@ -3,9 +3,7 @@
     "allow": [
       "mcp(playwright/*)",
       "read_file(D:\\MY\\cv\\cloude_CV)",
-      "write_file(D:\\MY\\cv\\cloude_CV)",
-      "command(regex:python (ats_score|build_cv)\\.py.*)",
-      "command(regex:^\\s*(Get-ChildItem|gci|dir|ls|Test-Path)\\b[^;|&>`$()]*$)"
+      "write_file(D:\\MY\\cv\\cloude_CV)"
     ],
     "deny": [
       "read_file(D:\\MY\\cv\\cloude_CV\\مشروع\\job-catcher\\.state_key)",
@@ -14,6 +12,8 @@
       "write_file(D:\\MY\\cv\\cloude_CV\\مشروع\\job-catcher\\pc)",
       "write_file(D:\\MY\\cv\\cloude_CV\\مشروع\\job-catcher\\.git)",
       "write_file(D:\\MY\\cv\\cloude_CV\\.git)",
+      "mcp(playwright/browser_run_code_unsafe)",
+      "mcp(playwright/browser_evaluate)",
       "mcp(firecrawl/*)",
       "mcp(exa/*)",
       "mcp(graphify/*)"
