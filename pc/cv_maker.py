@@ -119,6 +119,7 @@ def make(rec, facts_file, model="claude-sonnet-5-5", log=print, timeout=600):
         (CV_DIR / f"cv_{name}.html").unlink(missing_ok=True)
         pdf = (CV_DIR / f"Mohamed_Nomer_CV_{name}.pdf").replace(OUT_DIR / f"Mohamed_Nomer_CV_{name}.pdf")
         log(f"[i] tailored CV ready ({who}): {pdf.name} (JD {'read' if jd else 'not found'})")
+        rec["screened"] = bool(jd)  # the brief then skips the browser screen (12 page searches on thndr)
         return pdf, ""
     except Exception as e:  # never stop an application because of the CV
         log(f"[!] CV for {rec.get('company')} failed: {e}")

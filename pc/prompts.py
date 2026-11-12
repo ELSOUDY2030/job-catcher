@@ -26,6 +26,7 @@ Link: {url}
 7. Tabs, before your final reply: close (browser_tabs action "close") every tab you opened for this job that
    isn't needed. "skipped": close all of them. "ready" / "ask" / "needs_you": keep only the ONE tab with the form,
    on its last page (close the job-board tab the company site was opened from).
+   Always also close the extension's connection tab (its URL has "connect.html"): one is left per run otherwise.
 
 ## Your final reply: this JSON only
 {{"status": "ready" | "ask" | "needs_you" | "skipped", "reason": "...", "cv_file": "<CV file name used>",
@@ -51,6 +52,7 @@ SUBMIT = """Continue the SAME application in the SAME browser tab. Its answers w
 2. Click the final button once and wait for the confirmation.
 3. browser_take_screenshot with filename "{shot_name}".
 4. If it was submitted: close this tab (browser_tabs action "close"). If not, leave it open for the user.
+   Either way, close the extension's connection tab (its URL has "connect.html").
 5. Final reply, JSON only:
 {{"submitted": true | false, "reason": "...", "confirmation": "<confirmation text shown on the page>"}}"""
 

@@ -34,6 +34,8 @@ SNAPSHOT_RULE = """Browser rules:
    - Uploading the CV: file inputs are hidden, so never target them. Click the VISIBLE button or area
      ("Upload", "Upload file", "Attach", "Select file", "Choose file", "drag and drop"): a file chooser opens.
      Then call browser_file_upload with only "paths": [the CV's full path].
+   - Fill all the text fields you can see on a page with ONE browser_fill_form call (every field's ref + value),
+     not one browser_type per field: every extra call makes the next one slower.
    - An action that fails: try it ONE more time, then stop with status "needs_you" and the error.
      Never look for workarounds (no other tools, no JavaScript, no tool documentation files)."""
 

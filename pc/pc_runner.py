@@ -312,6 +312,7 @@ def ready_to_apply():
 
 
 AGY_MODEL = "gemini-3.8-flash-medium"  # overridden by [apply] agy_model; list: `agy models`
+AGY_FALLBACK = ["gemini-4-argon-medium", "claude-sonnet-5-5-low"]  # [apply] agy_fallback: when a model is out
 
 
 AGENT_SRC = HERE / "job-applier.md"            # the agent: no shell tool at all, fixed system prompt
@@ -346,7 +347,21 @@ def agy(prompt, out, conversation=None, minutes=20):
     res = review.parse_json(stdout) or {}
     log(f"[i] agy {out.name}: {res.get('status', 'no result')} in {res.get('duration_seconds') or 0:.0f}s, "
         f"{res.get('num_turns', '?')} turns")
+    switch_model(out.with_suffix(".log"), str(res.get("error") or ""))
     return res
+
+
+def switch_model(log_file, error="", limit=3):
+    """The next runs use the next model in AGY_FALLBACK when this one is out (the resume after a failed fill
+    then continues the same session on the new model):
+    - Google's "No capacity available" (503): every step waits through retries (2 min/step on 2026-11-12),
+      so after `limit` of them in one run;
+    - "Individual quota reached": the model is gone for hours (Sonnet in agy, 2026-11-12), so at once."""
+    global AGY_MODEL
+    text = log_file.read_text(encoding="utf-8", errors="ignore") if log_file.exists() else ""
+    if ("quota reached" in error or text.count("No capacity available") >= limit) and AGY_FALLBACK:
+        old, AGY_MODEL = AGY_MODEL, AGY_FALLBACK.pop(0)
+        log(f"[!] {old} is out (no capacity / quota): switching to {AGY_MODEL}")
 
 
 def reply_json(run, key):
@@ -426,6 +441,7 @@ CV_MENU = CV_DIR / "cv_menu.md"
 CHANNEL = {"easy_apply": "LinkedIn Easy Apply", "external": "LinkedIn -> company site", "no_button": "LinkedIn",
            "wuzzuf": "Wuzzuf", "bayt": "Bayt", "indeed": "Indeed", "external_direct": "company site"}
 LOG_SECTION = "## Job Catcher (automatic)"
+SCREEN_STEP = "2. Screen the job with the \"Screen\" rules below. If it isn't a fit: status \"skipped\" with the reason."
 
 
 def write_brief(rec, rdir, cv_file, key):
@@ -446,6 +462,8 @@ def write_brief(rec, rdir, cv_file, key):
             + "\n## Screen and apply rules (job-hunter skill)\n" + rules
             + "\n\n## Facts: the ONLY source for every answer\n" + FACTS.read_text(encoding="utf-8")
             + known_answers())
+    if rec.get("screened"):  # Sonnet already screened the full job description
+        text = text.replace(SCREEN_STEP, "2. The job was already screened from its description and passed: don't screen it again.")
     brief = rdir / "brief.md"
     brief.write_text(text, encoding="utf-8")
     return brief
@@ -550,6 +568,7 @@ def main():
     env = read_json(ENV_FILE) or {}  # only needed for notify_each; the hourly summary comes from GitHub
     env["notify_each"] = cfg.get("apply", {}).get("notify_each", False)
     global AGY_MODEL
+    AGY_FALLBACK[:] = cfg.get("apply", {}).get("agy_fallback", AGY_FALLBACK)
     AGY_MODEL = review.AGY_MODEL = cfg.get("apply", {}).get("agy_model", AGY_MODEL)
     pc = load_pc()
     results = pc.get("results", {})

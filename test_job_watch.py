@@ -439,4 +439,18 @@ assert pc_runner.ask_user(rec_t, qs, env_t, 1) == {"Why us?": "RAG work", "Years
 assert pc_runner.ask_user(rec_t, qs, {}, 1) is None  # no Telegram on this PC: needs_you as before
 pc_runner.telegram_bot.call, pc_runner.time.sleep, pc_runner.log = real_call, real_sleep, real_log
 
+assert pc_runner.SCREEN_STEP in pc_runner.BRIEF  # write_brief drops it after Sonnet's screen: must match the template
+with _tf.TemporaryDirectory() as d:  # switch_model: 3 "No capacity" lines in one run -> the next model
+    f = _P(d) / "x.log"
+    f.write_text("No capacity available" + chr(10) + "No capacity available No capacity available")
+    model, fallback, real_log = pc_runner.AGY_MODEL, pc_runner.AGY_FALLBACK[:], pc_runner.log
+    pc_runner.log = lambda m: None  # not into receipts/runner.log
+    pc_runner.AGY_MODEL, pc_runner.AGY_FALLBACK[:] = "a", ["b"]
+    pc_runner.switch_model(f)
+    assert pc_runner.AGY_MODEL == "b" and not pc_runner.AGY_FALLBACK
+    pc_runner.AGY_FALLBACK[:] = ["c"]
+    pc_runner.switch_model(_P(d) / "none.log", "Individual quota reached. Resets in 4h")
+    assert pc_runner.AGY_MODEL == "c"
+    pc_runner.AGY_MODEL, pc_runner.AGY_FALLBACK[:], pc_runner.log = model, fallback, real_log
+
 print("ok")
