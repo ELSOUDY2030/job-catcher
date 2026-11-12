@@ -411,4 +411,32 @@ assert job_watch.search_hours(None, _now, 24) == 24                       # firs
 assert job_watch.search_hours("2026-11-11T11:37+00:00", _now, 24) == 1   # normal 30-min gap
 assert job_watch.search_hours("2026-11-11T09:07+00:00", _now, 24) == 4   # missed runs: bigger window
 assert job_watch.search_hours("2026-11-01T09:07+00:00", _now, 24) == 24  # capped
+
+# questions on Telegram: your reply -> answers
+assert pc_runner.parse_reply("تمام", 2) == {}
+assert pc_runner.parse_reply("2: 4 years\n1- relocation", 2) == {2: "4 years", 1: "relocation"}
+assert pc_runner.parse_reply("Growth", 1) == {1: "Growth"} and pc_runner.parse_reply("Growth", 2) is None
+assert pc_runner.parse_reply("9: x", 2) is None  # no question 9
+sent, inbox = [], []
+def fake_call(token, method, **kw):
+    sent.append(method)
+    if method == "sendMessage":
+        return {"message_id": 7}
+    return inbox.pop(0) if method == "getUpdates" and inbox else []
+pc_runner.telegram_bot.call, real_call = fake_call, pc_runner.telegram_bot.call
+pc_runner.time.sleep, real_sleep = (lambda s: None), pc_runner.time.sleep
+pc_runner.log, real_log = (lambda m: None), pc_runner.log  # keep receipts/runner.log clean
+env_t = {"token": "t", "chat_id": 5}
+qs = [{"q": "Why us?", "suggested": "RAG work"}, {"q": "Years of Python?", "suggested": "5"}]
+rec_t = {"id": "j1", "title": "AI", "company": "C", "url": "u"}
+inbox[:] = [[{"update_id": 3}], [{"update_id": 4, "message": {"chat": {"id": 5}, "text": "2: 4"}}]]
+assert pc_runner.ask_user(rec_t, qs, env_t, 1) == {"Why us?": "RAG work", "Years of Python?": "4"}
+inbox[:] = [[], [{"update_id": 9, "callback_query": {"id": "q", "data": "n:j1", "message": {"chat": {"id": 5}}}}]]
+assert pc_runner.ask_user(rec_t, qs, env_t, 1) == "skip"
+inbox[:] = [[], [{"update_id": 9, "callback_query": {"id": "q", "data": "k:other", "message": {"chat": {"id": 5}}}},
+                 {"update_id": 10, "callback_query": {"id": "q", "data": "k:j1", "message": {"chat": {"id": 5}}}}]]
+assert pc_runner.ask_user(rec_t, qs, env_t, 1) == {"Why us?": "RAG work", "Years of Python?": "5"}
+assert pc_runner.ask_user(rec_t, qs, {}, 1) is None  # no Telegram on this PC: needs_you as before
+pc_runner.telegram_bot.call, pc_runner.time.sleep, pc_runner.log = real_call, real_sleep, real_log
+
 print("ok")

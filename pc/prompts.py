@@ -16,16 +16,21 @@ Link: {url}
 3. Apply with these fixed steps for this site:
 {recipe}
 4. Stop with status "needs_you" (exact step + error in "reason") on: a login, password, email/SMS code,
-   CAPTCHA, account creation, a failed upload, or ANY question whose answer is not in the facts below.
+   CAPTCHA, account creation or a failed upload.
+   A question whose answer is not in the facts (nor in "Answers the user gave before"): fill the rest of that
+   page, leave that field empty, and stop with status "ask" and in "open" each such question with your best
+   TRUTHFUL suggestion from the facts (free text: 1-3 sentences; never claim what the facts don't say).
+   Stay on that page: the user answers on Telegram and you continue from there.
 5. Never press the final Submit / Send / Submit application button. Leave the tab on that last page.
 6. {snapshot_rule}
 7. Tabs, before your final reply: close (browser_tabs action "close") every tab you opened for this job that
-   isn't needed. "skipped": close all of them. "ready" / "needs_you": keep only the ONE tab with the form,
+   isn't needed. "skipped": close all of them. "ready" / "ask" / "needs_you": keep only the ONE tab with the form,
    on its last page (close the job-board tab the company site was opened from).
 
 ## Your final reply: this JSON only
-{{"status": "ready" | "needs_you" | "skipped", "reason": "...", "cv_file": "<CV file name used>",
- "questions": [{{"q": "<question exactly as shown>", "a": "<answer exactly as typed or selected>"}}]}}
+{{"status": "ready" | "ask" | "needs_you" | "skipped", "reason": "...", "cv_file": "<CV file name used>",
+ "questions": [{{"q": "<question exactly as shown>", "a": "<answer exactly as typed or selected>"}}],
+ "open": [{{"q": "<question exactly as shown>", "options": ["<choices, if it has any>"], "suggested": "..."}}]}}
 "questions" lists EVERY field of the form, pre-filled ones too (name, email, phone, years, yes/no, salary,
 cover letter...). It is checked before anything is sent.
 """
@@ -33,6 +38,11 @@ cover letter...). It is checked before anything is sent.
 RESUME = """Your run ended before you replied with the receipt (shell commands don't exist for you; maybe you
 tried one). Continue the SAME application in the SAME tab from where you stopped, using only the playwright
 browser tools, following {brief}. Never press the final submit. Final reply: the JSON receipt only."""
+
+ANSWER = """The user answered the open questions on Telegram: {answers}
+Type or select exactly these answers in those fields (same tab, same page), then continue the steps of {brief}
+from there, with the same rules. Never press the final submit.
+Final reply: the same JSON receipt ("ask" again only for NEW questions you haven't asked yet)."""
 
 SUBMIT = """Continue the SAME application in the SAME browser tab. Its answers were checked and approved.
 1. browser_find the final button ("Submit application" / "Submit" / "Send"). Check that the form still shows

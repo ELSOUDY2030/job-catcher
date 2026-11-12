@@ -64,7 +64,9 @@ def apply_presses(updates, chat_id, seen, now):
 
 
 def sync_presses(token, chat_id, state, seen, now):
-    updates = call(token, "getUpdates", offset=state.get("offset", 0), timeout=0, allowed_updates=["callback_query"])
+    updates = call(token, "getUpdates", offset=state.get("offset", 0), timeout=0,
+                   # "message" too: the PC reads your text answers (Telegram remembers this filter)
+                   allowed_updates=["callback_query", "message"])
     if updates:
         state["offset"] = updates[-1]["update_id"] + 1
     done = apply_presses(updates, chat_id, seen, now)

@@ -18,6 +18,7 @@ cv_model = "claude-sonnet-5-5"  # makes the next job's CV while agy applies (pc/
 agy_model = "gemini-3.8-flash-medium"  # Antigravity model for applying (`agy models` lists them). Flash: 2.3x faster
                                     # than gemini-4-argon-medium in our test; try claude-sonnet-5-5-low too
 trigger_github = true # the PC starts the GitHub run every 30 min (GitHub's own schedule skips most runs)
+ask_minutes = 30  # a question not in your facts goes to Telegram with a suggested answer; wait this long
 notify_each = false  # false: results only in the hourly summary (screenshots stay in receipts/<id>/ on your PC)
                      # true: also a Telegram message per application, with the screenshot + questions/answers
 # last check on the PC before Antigravity starts: queued jobs whose title has one of these are skipped

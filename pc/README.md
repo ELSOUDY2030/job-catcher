@@ -26,6 +26,7 @@ agy (Submit + سكرين) ── result.json ── Telegram
    - الملف ده بيسمح بحاجتين بس: المتصفح (Playwright)، والكتابة جوا `D:\MY\cv\cloude_CV`.
    - وبيمنع: قراية مفتاح التشفير، والكتابة في `candidate_facts.md`.
 2. **Telegram للجهاز:** `.venv\Scripts\python pc\setup_pc.py`. هيطلب الـ token مخفي، وبعدين ابعت للبوت أي رسالة.
+   من غيره الأسئلة اللي مش في حقايقك مش هتوصلك على Telegram، والوظيفة تتسجل "محتاجك".
 3. **Playwright:** شغّل `D:\MY\cv\cloude_CV\start_playwright_mcp.bat` وسيب Edge مفتوح ومسجّل دخول.
    علشان رفع الـ CV يشتغل: `edge://extensions` ← Playwright MCP Bridge ← Details ← فعّل **Allow access to file URLs**.
 4. **مكتبة الـ CV:** `.venv\Scripts\python -m pip install pypdf` (علشان `build_cv.py`).
@@ -52,6 +53,8 @@ agy (Submit + سكرين) ── result.json ── Telegram
 - `auto_min_score = 8`: أقل درجة تتقدم أوتوماتيك.
 - `per_cycle = 4`: أقصى عدد تقديمات في كل 30 دقيقة (يعني 8 في الساعة).
 - `claude_review = true`: Claude يراجع الإجابات اللي القواعد مش متأكدة منها.
+- `ask_minutes = 30`: سؤال مش في حقايقك يتبعت لك على Telegram بإجابة مقترحة. ✅ = قدّم بيها، ⏭ = سيبها،
+  أو ابعت "2: إجابتك". إجاباتك بتتحفظ في `receipts/my_answers.json` وتتستخدم تاني لنفس السؤال.
 
 ## مخاطر
 - **LinkedIn** ممكن يقفل الحساب لو التقديم بقى أوتوماتيك. الحد 8 في الساعة بيقلل الخطر، بس مش بيلغيه.

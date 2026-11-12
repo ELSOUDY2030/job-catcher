@@ -40,7 +40,8 @@ import review                                   # noqa: E402
 import cv_maker                                 # noqa: E402
 from concurrent.futures import ThreadPoolExecutor  # noqa: E402
 import jobsite                                 # noqa: E402
-from prompts import BRIEF, FILL, RESUME, SUBMIT  # noqa: E402
+from prompts import ANSWER, BRIEF, FILL, RESUME, SUBMIT  # noqa: E402
+import telegram_bot                            # noqa: E402
 from sources import jobspy_boards, words_regex, wuzzuf  # noqa: E402
 
 RECEIPTS = ROOT / "receipts"
@@ -48,6 +49,7 @@ LOG = RECEIPTS / "runner.log"
 KEY_FILE = ROOT / ".state_key"
 ENV_FILE = HERE / ".env.json"
 FACTS = CV_DIR / "candidate_facts.md"
+MY_ANSWERS = RECEIPTS / "my_answers.json"   # what you answered on Telegram, reused for the same question
 AGY = shutil.which("agy") or str(Path(os.environ.get("LOCALAPPDATA", "")) / "agy" / "bin" / "agy.exe")
 OPENSSL = shutil.which("openssl") or r"C:\Program Files\Git\usr\bin\openssl.exe"
 MCP_PORT = 8931
@@ -150,6 +152,99 @@ def notify(env, text, photo=None):
                                           "disable_web_page_preview": True})
     except Exception as e:  # a lost message must not lose the result
         log(f"[!] telegram: {e}")
+
+
+def parse_reply(text, n):
+    """Your Telegram text -> {question number: answer}. "2: answer" lines; plain text if there is ONE question;
+    "ok" / "تمام" = keep the suggestions ({}). None = can't tell which question it is for."""
+    text = text.strip()
+    if text.lower() in ("ok", "yes", "تمام", "موافق", "اه", "قدم", "قدّم"):
+        return {}
+    got = {int(m[1]): m[2].strip() for m in re.finditer(r"^\s*(\d+)\s*[:\-.)]\s*(.+)$", text, re.M)
+           if 0 < int(m[1]) <= n}
+    if got:
+        return got
+    return {1: text} if n == 1 else None
+
+
+def ask_user(rec, open_qs, env, minutes):
+    """Send the open questions with suggested answers; wait for ✅ / ⏭ / a text reply.
+    -> {question: answer}, "skip", or None (no Telegram on this PC, or no reply in time)."""
+    if not (env.get("token") and env.get("chat_id")) or not open_qs:
+        return None
+    chat = str(env["chat_id"])
+
+    def tg(method, **kw):
+        return telegram_bot.call(env["token"], method, **kw)
+
+    # ponytail: no offset = never confirms updates, so GitHub's run still gets every 🚀 press; ids seen before
+    # the question are ignored. Ceiling: 100 unconfirmed updates (GitHub confirms them every run).
+    def poll():
+        return tg("getUpdates", timeout=0, allowed_updates=["callback_query", "message"])
+
+    last = max((u["update_id"] for u in poll()), default=0)
+    lines = [f"❓ <b>{html.escape(rec['title'])}</b> · {html.escape(rec['company'])}", rec["url"], ""]
+    for i, x in enumerate(open_qs, 1):
+        opts = f"\n   ({' / '.join(map(str, x['options']))})" if x.get("options") else ""
+        lines.append(f"{i}. {html.escape(str(x.get('q', '')) + opts)}\n   💡 {html.escape(str(x.get('suggested', '')))}")
+    lines.append('\nموافق على الإجابات المقترحة؟ دوس ✅. عايز تغيّر واحدة: ابعت "2: إجابتك" (والباقي يفضل المقترح).')
+    keys = {f"k:{rec['id']}", f"n:{rec['id']}"}
+    sent = tg("sendMessage", chat_id=env["chat_id"], text="\n".join(lines)[:4000], parse_mode="HTML",
+              disable_web_page_preview=True,
+              reply_markup={"inline_keyboard": [[{"text": "✅ قدّم بالإجابات دي", "callback_data": f"k:{rec['id']}"},
+                                                 {"text": "⏭ سيبها", "callback_data": f"n:{rec['id']}"}]]})
+    log(f"[i] asked you on Telegram ({len(open_qs)} questions), waiting up to {minutes} min")
+    answer = {str(x.get("q", "")): str(x.get("suggested", "")) for x in open_qs}
+
+    def done(label):
+        try:
+            tg("editMessageReplyMarkup", chat_id=env["chat_id"], message_id=sent["message_id"],
+               reply_markup={"inline_keyboard": [[{"text": label, "callback_data": "-"}]]})
+        except Exception as e:
+            log(f"[!] telegram: {e}")
+
+    end = time.time() + minutes * 60
+    while time.time() < end:
+        time.sleep(5)
+        try:
+            updates = [u for u in poll() if u["update_id"] > last]
+        except Exception as e:  # a network blip, or GitHub's getUpdates at the same moment (409): try again
+            log(f"[!] telegram poll: {e}")
+            continue
+        for u in updates:
+            last = max(last, u["update_id"])
+            q, m = u.get("callback_query"), u.get("message")
+            if q and str(q["message"]["chat"]["id"]) == chat and q.get("data") in keys:
+                tg("answerCallbackQuery", callback_query_id=q["id"])
+                if q["data"].startswith("n:"):
+                    done("⏭ اتسابت")
+                    return "skip"
+                done("✅ بيقدّم")
+                return answer
+            if m and str(m["chat"]["id"]) == chat and m.get("text"):
+                got = parse_reply(m["text"], len(open_qs))
+                if got is None:
+                    tg("sendMessage", chat_id=env["chat_id"], text='اكتب رقم السؤال: "2: إجابتك"')
+                    continue
+                for i, a in got.items():
+                    answer[str(open_qs[i - 1].get("q", ""))] = a
+                done("✅ بيقدّم بإجاباتك")
+                return answer
+    done("⌛ ماردّتش: محتاجك")
+    return None
+
+
+def remember(answers):
+    known = read_json(MY_ANSWERS) or {}
+    known.update(answers)
+    MY_ANSWERS.write_text(json.dumps(known, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+def known_answers():
+    """Answers you gave on Telegram before, as a facts section (the brief and the review both get it)."""
+    known = read_json(MY_ANSWERS) or {}
+    return ("\n\n## Answers the user gave before (use the same answer for the same question)\n"
+            + "\n".join(f"- {q}: {a}" for q, a in known.items())) if known else ""
 
 
 # ---------- 1. sources GitHub can't reach ----------
@@ -349,7 +444,8 @@ def write_brief(rec, rdir, cv_file, key):
     text = (BRIEF.format(title=rec["title"], company=rec["company"], location=rec["location"], url=rec["url"],
                          cv_line=cv_line, recipe=recipe, snapshot_rule=jobsite.SNAPSHOT_RULE)
             + "\n## Screen and apply rules (job-hunter skill)\n" + rules
-            + "\n\n## Facts: the ONLY source for every answer\n" + FACTS.read_text(encoding="utf-8"))
+            + "\n\n## Facts: the ONLY source for every answer\n" + FACTS.read_text(encoding="utf-8")
+            + known_answers())
     brief = rdir / "brief.md"
     brief.write_text(text, encoding="utf-8")
     return brief
@@ -389,18 +485,39 @@ def apply_one(rec, cfg, env, rules, cv_file=None):
         answers = reply_json(run, "status")
     if not answers:
         return finish(rec, "needs_you", "Antigravity didn't finish filling the form (no receipt).", env, rdir)
+    given = {}  # this job's answers from you on Telegram
+    for n in range(3):  # a wizard can ask on more than one page
+        if answers.get("status") != "ask":
+            break
+        reply = ask_user(rec, answers.get("open") or [], env, cfg.get("apply", {}).get("ask_minutes", 30))
+        if reply is None:
+            qs = " | ".join(str(x.get("q", "")) for x in answers.get("open") or [])
+            return finish(rec, "needs_you", f"أسئلة مش في حقايقك (مافيش رد على Telegram): {qs}"[:600], env, rdir, answers)
+        if reply == "skip":
+            return finish(rec, "skipped", "انت قلت سيبها (Telegram)", env, rdir, answers)
+        given.update(reply)
+        remember(reply)
+        run = agy(ANSWER.format(answers=json.dumps(reply, ensure_ascii=False), brief=brief), rdir / f"answer{n + 1}",
+                  conversation=run.get("conversation_id"))
+        answers = reply_json(run, "status")
+        if not answers:
+            return finish(rec, "needs_you", "Antigravity didn't finish after your answers (no receipt).", env, rdir)
     (rdir / "answers.json").write_text(json.dumps(answers, ensure_ascii=False, indent=1), encoding="utf-8")
     if answers.get("status") != "ready":
         status = "skipped" if answers.get("status") == "skipped" else "needs_you"
         return finish(rec, status, answers.get("reason", ""), env, rdir, answers)
 
     # supervisor: rules first, Claude only for what the rules can't verify
-    verdict = audit.check(answers.get("questions", []), rules)
-    review_note = f"🔎 مراجعة: {verdict['ok']} إجابة مطابقة للقواعد"
+    known = {**(read_json(MY_ANSWERS) or {}), **given}
+    mine = [x for x in answers.get("questions", []) if known.get(str(x.get("q"))) == str(x.get("a"))]
+    verdict = audit.check([x for x in answers.get("questions", []) if x not in mine], rules)  # yours: no check
+    review_note = f"🔎 مراجعة: {verdict['ok']} إجابة مطابقة للقواعد" + (f"، و{len(mine)} من إجاباتك" if mine else "")
     if verdict["unsure"]:
         if cfg.get("apply", {}).get("claude_review", True):
             try:
-                problems, who = review.review(rec, verdict["unsure"], FACTS)
+                facts = rdir / "facts_plus.md"  # + your Telegram answers, so a reused one isn't flagged
+                facts.write_text(FACTS.read_text(encoding="utf-8") + known_answers(), encoding="utf-8")
+                problems, who = review.review(rec, verdict["unsure"], facts)
                 verdict["problems"] += problems
                 review_note += f"، و{len(verdict['unsure'])} راجعها {who}"
             except Exception as e:
