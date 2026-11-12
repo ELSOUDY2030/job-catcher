@@ -41,6 +41,8 @@ SNAPSHOT_RULE = """Browser rules:
      Then call browser_file_upload with only "paths": [the CV's full path].
    - Fill all the text fields you can see on a page with ONE browser_fill_form call (every field's ref + value),
      not one browser_type per field: every extra call makes the next one slower.
+   - A click that times out ("waiting for element to be visible, enabled and stable"): browser_find the element
+     again (its ref changes) and click the NEW ref once. If it is a link, browser_navigate to its /url instead.
    - An action that fails: try it ONE more time, then stop with status "needs_you" and the error.
      Never look for workarounds (no other tools, no JavaScript, no tool documentation files)."""
 

@@ -42,10 +42,14 @@ def _run(cmd, timeout, **kw):
         return ""
 
 
+USE_CLAUDE = True
+
+
 def ask(prompt, claude_model=None, timeout=300):
-    """-> (JSON object, who answered) or (None, reasons). Claude first, Gemini if Claude gives no JSON."""
+    """-> (JSON object, who answered) or (None, reasons). Claude first, Gemini if Claude gives no JSON.
+    USE_CLAUDE = False ([apply] use_claude = false): Gemini only, Claude Code's tokens untouched."""
     obj = parse_json(_run([CLAUDE, "-p", "--tools", "", "--output-format", "text"]
-                          + (["--model", claude_model] if claude_model else []), timeout, input=prompt))
+                          + (["--model", claude_model] if claude_model else []), timeout, input=prompt)) if USE_CLAUDE else None
     if isinstance(obj, dict):
         return obj, "Claude"
     # the prompt goes in a file: facts + CV are too long for a Windows command line

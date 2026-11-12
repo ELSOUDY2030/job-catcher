@@ -54,7 +54,7 @@ Reply with JSON only:
 """
 
 
-def job_description(url, limit=4000, html=None):
+def job_description(url, limit=12000, html=None):  # 4000 cut the "Languages: Ukrainian fluent" line of a 6200-char one
     """The job's text from its public page (jobsite.page; LinkedIn needs no login). '' if it can't be read."""
     page = jobsite.page(url) if html is None else html
     if not page:

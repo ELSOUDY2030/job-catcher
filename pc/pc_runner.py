@@ -616,6 +616,7 @@ def main():
     global AGY_MODEL
     AGY_FALLBACK[:] = cfg.get("apply", {}).get("agy_fallback", AGY_FALLBACK)
     AGY_MODEL = review.AGY_MODEL = cfg.get("apply", {}).get("agy_model", AGY_MODEL)
+    review.USE_CLAUDE = cfg.get("apply", {}).get("use_claude", True)
     pc = load_pc()
     results = pc.get("results", {})
     cutoff = (datetime.now(timezone.utc) - timedelta(days=KEEP_DAYS)).isoformat()
