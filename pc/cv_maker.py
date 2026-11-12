@@ -113,7 +113,7 @@ def make(rec, facts_file, model="claude-sonnet-5-5", log=print, timeout=600):
             log(f"[!] CV for {rec['company']} not used: {'; '.join(why)[:300]}")
             return None, ""
         name = file_name(rec["company"])
-        build_cv.build(name, {"title": html.escape(v["title"]), "profile": html.escape(v["profile"]) + " " + build_cv.MSC,
+        build_cv.build(name, {"title": html.escape(v["title"]), "profile": html.escape(v["profile"]) + ("" if "Foscari" in v["profile"] else " " + build_cv.MSC),  # once, never twice
                               "skills": v["skills"], "projects": v["projects"]})
         OUT_DIR.mkdir(exist_ok=True)
         (CV_DIR / f"cv_{name}.html").unlink(missing_ok=True)
