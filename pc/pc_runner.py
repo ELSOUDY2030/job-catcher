@@ -9,7 +9,7 @@
    Every result goes to Telegram: screenshot, the questions and the answers, the review.
 3. Hand jobs + results to GitHub through the "pc" branch (AES-encrypted with .state_key).
 
-Needs: Edge + the Playwright MCP server on port 8931 (start_playwright_mcp.bat), agy with the
+Needs: the job Edge profile signed in once (`pc_runner.py --login`; the runner starts it and Playwright MCP), agy with the
 allow-list from pc/agy-cli-settings.json, pc/.env.json (pc/setup_pc.py), pc/facts_rules.toml.
 """
 import html
@@ -53,6 +53,15 @@ MY_ANSWERS = RECEIPTS / "my_answers.json"   # what you answered on Telegram, reu
 AGY = shutil.which("agy") or str(Path(os.environ.get("LOCALAPPDATA", "")) / "agy" / "bin" / "agy.exe")
 OPENSSL = shutil.which("openssl") or r"C:\Program Files\Git\usr\bin\openssl.exe"
 MCP_PORT = 8931
+# The browser: a separate Edge profile only for applying, reached over CDP (one connection shared by every agy
+# session: no "connect.html" tab per session as with the extension, and each session sees the tabs of the last).
+# A normal Edge window (not "controlled by automated software"); your own Edge profile is never touched.
+# Its port is localhost-only, and only this profile listens on it.
+EDGE = Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")) / "Microsoft" / "Edge" / "Application" / "msedge.exe"
+EDGE_PROFILE = Path(os.environ.get("LOCALAPPDATA", "")) / "JobCatcher" / "EdgeProfile"
+CDP_PORT = 9341  # not 9222: Lenovo Vantage's WebView2 listens there
+LOGIN_SITES = ["https://www.linkedin.com/login", "https://secure.indeed.com/auth", "https://wuzzuf.net/login",
+               "https://www.bayt.com/en/login/"]
 # the scheduled task runs pythonw (no console): without this every claude/agy/git call opens a black window
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 KEEP_DAYS = 30
@@ -267,32 +276,43 @@ def scan(cfg):
 
 # ---------- 2. apply ----------
 
-def mcp_up():
+def port_up(port):
     try:
-        socket.create_connection(("localhost", MCP_PORT), timeout=3).close()
+        socket.create_connection(("localhost", port), timeout=3).close()
         return True
     except OSError:
         return False
 
 
-def ensure_mcp(wait=60):
-    """Start the Playwright MCP server (your start_playwright_mcp_hidden.vbs, no window) if it isn't running.
-    With PLAYWRIGHT_MCP_EXTENSION_TOKEN set (pc/set_playwright_token.ps1) it attaches to Edge without a prompt."""
+def mcp_up():
+    return port_up(MCP_PORT)
+
+
+def ensure_edge(urls=(), wait=30):
+    """The job Edge (EDGE_PROFILE) with its CDP port; started if it isn't running. urls: tabs to open."""
+    if port_up(CDP_PORT) and not urls:
+        return True
+    EDGE_PROFILE.mkdir(parents=True, exist_ok=True)
+    subprocess.Popen([str(EDGE), f"--user-data-dir={EDGE_PROFILE}", f"--remote-debugging-port={CDP_PORT}",
+                      "--remote-debugging-address=127.0.0.1", "--no-first-run", "--no-default-browser-check", *urls])
+    for _ in range(wait // 3):
+        if port_up(CDP_PORT):
+            return True
+        time.sleep(3)
+    return False
+
+
+def ensure_mcp(wait=90):
+    """Playwright MCP on MCP_PORT, attached to the job Edge over CDP (no window). agy's mcp_config points at it."""
+    if not ensure_edge():
+        return False
     if mcp_up():
         return True
-    launcher = CV_DIR / "start_playwright_mcp_hidden.vbs"
-    if not launcher.exists():
-        return False
-    log("[i] starting the Playwright MCP server")
-    env = dict(os.environ)
-    if "PLAYWRIGHT_MCP_EXTENSION_TOKEN" not in env:  # saved by set_playwright_token.ps1 after this process started
-        try:
-            import winreg
-            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as key:
-                env["PLAYWRIGHT_MCP_EXTENSION_TOKEN"] = winreg.QueryValueEx(key, "PLAYWRIGHT_MCP_EXTENSION_TOKEN")[0]
-        except OSError:
-            pass
-    subprocess.Popen(["wscript.exe", str(launcher)], cwd=CV_DIR, env=env)
+    log("[i] starting the Playwright MCP server (job Edge, CDP)")
+    subprocess.Popen(["cmd", "/c", "npx", "-y", "@playwright/mcp@latest", "--cdp-endpoint",
+                      f"http://127.0.0.1:{CDP_PORT}", "--port", str(MCP_PORT), "--shared-browser-context"],
+                     cwd=CV_DIR, creationflags=NO_WINDOW, stdin=subprocess.DEVNULL,
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     for _ in range(wait // 3):
         time.sleep(3)
         if mcp_up():
@@ -307,7 +327,7 @@ def ready_to_apply():
     if not audit.RULES_FILE.exists():
         problems.append("pc/facts_rules.toml missing")
     if not ensure_mcp():
-        problems.append(f"Playwright MCP didn't start on port {MCP_PORT} (start_playwright_mcp.bat + Edge open)")
+        problems.append(f"the job Edge (CDP {CDP_PORT}) or Playwright MCP ({MCP_PORT}) didn't start")
     return problems
 
 
@@ -666,6 +686,10 @@ def live(every=30):
 
 
 if __name__ == "__main__":
+    if "--login" in sys.argv:  # once: sign in to the job sites in the job Edge (it keeps the logins)
+        ensure_edge(LOGIN_SITES)
+        print("Sign in on each tab of the new Edge window (LinkedIn, Indeed, Wuzzuf, Bayt). Keep the window open.")
+        sys.exit()
     lock = single_instance()
     if lock is None:
         log("[i] another runner is already working (scheduled task or --live), skipping")
