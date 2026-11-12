@@ -13,7 +13,7 @@ from prompts import REVIEW
 
 CLAUDE = shutil.which("claude") or str(Path.home() / ".local" / "bin" / "claude.exe")
 AGY = shutil.which("agy") or str(Path(os.environ.get("LOCALAPPDATA", "")) / "agy" / "bin" / "agy.exe")
-AGY_MODEL = "gemini-3.8-flash-medium"  # pc_runner sets it from [apply] agy_model
+AGY_MODEL = "gemini-4-hydrogen-medium"  # pc_runner sets it from [apply] agy_model
 PROMPTS_DIR = Path(__file__).resolve().parents[1] / "receipts" / "_prompts"  # inside agy's read allow-list
 
 

@@ -336,8 +336,9 @@ v = audit.check([
     {"q": "Why us?", "a": "I love building with CrewAI"},                       # problem (never_claim)
     {"q": "Why us?", "a": "I build RAG with FastAPI"},                          # unsure (no rule)
     {"q": "Stack?", "a": "C#/.NET"},                                            # problem (never_claim, symbol edge)
+    {"q": "Do you have 2+ years of Python?", "a": "Yes"},                        # unsure (yes/no on a value rule)
 ], rules_demo)
-assert v["ok"] == 2 and len(v["problems"]) == 3 and len(v["unsure"]) == 2, v
+assert v["ok"] == 2 and len(v["problems"]) == 3 and len(v["unsure"]) == 3, v
 assert {p["why"] for p in v["problems"]} >= {"not outside Egypt"}
 assert review.parse('Sure!\n{"problems": []}\nDone') == []
 assert review.parse('{"problems": [{"q": "s", "a": "1", "why": "x"}]}')[0]["why"] == "x"

@@ -335,8 +335,8 @@ def ready_to_apply():
     return problems
 
 
-AGY_MODEL = "gemini-3.8-flash-medium"  # overridden by [apply] agy_model; list: `agy models`
-AGY_FALLBACK = ["gemini-3.8-flash-high", "gemini-3.8-flash-low"]  # [apply] agy_fallback: when a model is out
+AGY_MODEL = "gemini-4-hydrogen-medium"  # overridden by [apply] agy_model; list: `agy models`
+AGY_FALLBACK = ["gemini-4-hydrogen-high", "gemini-3.8-flash-medium"]  # [apply] agy_fallback: when a model is out
 # Never used in Antigravity, whatever the config or a fallback says (your call, 2026-11-12): Argon was slow
 # (12 min for one Easy Apply) and its clicks kept timing out; Claude models run only through Claude Code
 # (CV, review), never through Antigravity.

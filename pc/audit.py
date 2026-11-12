@@ -14,6 +14,7 @@ import tomllib
 from pathlib import Path
 
 RULES_FILE = Path(__file__).with_name("facts_rules.toml")
+YES_NO = re.compile(r"^(yes|no|true|false|نعم|لا)\.?$", re.IGNORECASE)
 
 
 def load_rules(path=RULES_FILE):
@@ -46,6 +47,8 @@ def check(questions, rules):
             unsure.append({"q": q, "a": a})
         elif _has(rule["a"], a):
             ok += 1
+        elif YES_NO.match(a) and not (_has(rule["a"], "yes") or _has(rule["a"], "no")):
+            unsure.append({"q": q, "a": a})  # "Do you have AI experience?" only shares words with a years / degree rule
         else:
             problems.append({"q": q, "a": a, "why": rule.get("why", "doesn't match candidate_facts.md")})
     return {"problems": problems, "unsure": unsure, "ok": ok}

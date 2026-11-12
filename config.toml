@@ -16,9 +16,9 @@ per_cycle = 4        # max applications per 30-minute PC cycle (= 8/hour, the jo
 claude_review = true # answers the rule check can't verify are reviewed by `claude -p` before Submit
 use_claude = false  # false: the CV and the answer review run on Gemini (agy) too, no Claude Code tokens
 cv_model = "claude-sonnet-5-5"  # makes the next job's CV while agy applies (pc/cv_maker.py); "" = ready CVs only
-agy_model = "gemini-3.8-flash-medium"  # Antigravity model for applying (`agy models` lists them)
-agy_fallback = ["gemini-3.8-flash-high", "gemini-3.8-flash-low"]  # used when Flash medium has no capacity
-# Antigravity runs Gemini Flash only: gemini-4-argon-* and claude-* are blocked in pc_runner.BLOCKED_MODELS
+agy_model = "gemini-4-hydrogen-medium"  # Antigravity model for applying (`agy models` lists them)
+agy_fallback = ["gemini-4-hydrogen-high", "gemini-3.8-flash-medium"]  # used when the model above has no capacity
+# Antigravity runs Gemini Hydrogen (Flash as the last fallback): gemini-4-argon-* and claude-* are blocked in pc_runner.BLOCKED_MODELS
 trigger_github = true # the PC starts the GitHub run every 30 min (GitHub's own schedule skips most runs)
 ask_minutes = 30  # a question not in your facts goes to Telegram with a suggested answer; wait this long
 notify_each = false  # false: results only in the hourly summary (screenshots stay in receipts/<id>/ on your PC)
