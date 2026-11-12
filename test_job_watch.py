@@ -451,7 +451,7 @@ with _tf.TemporaryDirectory() as d:  # switch_model: 3 "No capacity" lines in on
     pc_runner.AGY_FALLBACK[:] = ["c"]
     pc_runner.switch_model(_P(d) / "none.log", "Individual quota reached. Resets in 4h")
     assert pc_runner.AGY_MODEL == "c"
-    pc_runner.AGY_FALLBACK[:] = ["gemini-4-argon-medium"]  # blocked: never switched to
+    pc_runner.AGY_FALLBACK[:] = ["gemini-4-argon-medium", "claude-sonnet-5-5-low"]  # blocked: never switched to
     pc_runner.switch_model(_P(d) / "none.log", "quota reached")
     assert pc_runner.AGY_MODEL == "c"
     pc_runner.AGY_MODEL, pc_runner.AGY_FALLBACK[:], pc_runner.log = model, fallback, real_log

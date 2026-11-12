@@ -294,7 +294,11 @@ def ensure_edge(urls=(), wait=30):
         return True
     EDGE_PROFILE.mkdir(parents=True, exist_ok=True)
     subprocess.Popen([str(EDGE), f"--user-data-dir={EDGE_PROFILE}", f"--remote-debugging-port={CDP_PORT}",
-                      "--remote-debugging-address=127.0.0.1", "--no-first-run", "--no-default-browser-check", *urls])
+                      "--remote-debugging-address=127.0.0.1", "--no-first-run", "--no-default-browser-check",
+                      # behind another window Edge stops drawing the page: clicks then wait for a "stable"
+                      # element until they time out (25 of them on 2026-11-12)
+                      "--disable-backgrounding-occluded-windows", "--disable-renderer-backgrounding",
+                      "--disable-background-timer-throttling", *urls])
     for _ in range(wait // 3):
         if port_up(CDP_PORT):
             return True
@@ -332,10 +336,11 @@ def ready_to_apply():
 
 
 AGY_MODEL = "gemini-3.8-flash-medium"  # overridden by [apply] agy_model; list: `agy models`
-AGY_FALLBACK = ["claude-sonnet-5-5-low"]  # [apply] agy_fallback: when a model is out
-# Never used, whatever the config or a fallback says (your call, 2026-11-12): Argon was slow (12 min for one
-# Easy Apply) and its clicks kept timing out.
-BLOCKED_MODELS = ("gemini-4-argon",)
+AGY_FALLBACK = ["gemini-3.8-flash-high", "gemini-3.8-flash-low"]  # [apply] agy_fallback: when a model is out
+# Never used in Antigravity, whatever the config or a fallback says (your call, 2026-11-12): Argon was slow
+# (12 min for one Easy Apply) and its clicks kept timing out; Claude models run only through Claude Code
+# (CV, review), never through Antigravity.
+BLOCKED_MODELS = ("gemini-4-argon", "claude-")
 
 
 AGENT_SRC = HERE / "job-applier.md"            # the agent: no shell tool at all, fixed system prompt
@@ -471,6 +476,19 @@ LOG_SECTION = "## Job Catcher (automatic)"
 SCREEN_STEP = "2. Screen the job with the \"Screen\" rules below. If it isn't a fit: status \"skipped\" with the reason."
 
 
+def prepared_answers(rdir):
+    """Answers worked out BEFORE the browser (scout.json: the form's questions, answered from the facts), so the
+    applier types instead of deciding. NOT_IN_FACTS ones are left to the "ask" rule."""
+    scout = read_json(rdir / "scout.json") or {}
+    rows = [f"- {x.get('q')}: {x.get('a')}" for x in scout.get("questions") or []
+            if x.get("a") and "NOT_IN_FACTS" not in str(x.get("a"))]
+    if not rows:
+        return ""
+    return ("\n\n## Prepared answers for this form (already checked against the facts: use them as written;\n"
+            "the real form can word a question differently or ask others: those still come from the facts)\n"
+            + "\n".join(rows) + (f"\nNote: {scout['notes']}" if scout.get("notes") else ""))
+
+
 def write_brief(rec, rdir, cv_file, key):
     """Everything agy needs in ONE file: steps, this site's fixed recipe, skill rules (sections 2 + 4), facts.
     One read instead of SKILL.md + candidate_facts.md + cv_menu.md, and nothing left to look for."""
@@ -487,6 +505,7 @@ def write_brief(rec, rdir, cv_file, key):
     text = (BRIEF.format(title=rec["title"], company=rec["company"], location=rec["location"], url=rec["url"],
                          cv_line=cv_line, recipe=recipe, snapshot_rule=jobsite.SNAPSHOT_RULE)
             + "\n## Screen and apply rules (job-hunter skill)\n" + rules
+            + prepared_answers(rdir)
             + "\n\n## Facts: the ONLY source for every answer\n" + FACTS.read_text(encoding="utf-8")
             + known_answers())
     if rec.get("screened"):  # Sonnet already screened the full job description

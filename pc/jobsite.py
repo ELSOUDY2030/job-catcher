@@ -29,6 +29,11 @@ def linkedin_kind(html):
 
 
 SNAPSHOT_RULE = """Browser rules:
+   - Tool arguments, exactly these names (others are rejected):
+     browser_find {"text": "..."} | browser_click {"target": "<ref like e88>"} |
+     browser_type {"target": "<ref>", "text": "..."} | browser_select_option {"target": "<ref>", "values": ["..."]} |
+     browser_fill_form {"fields": [{"target": "<ref>", "name": "<label>", "type": "textbox|checkbox|radio|combobox",
+     "value": "..."}]} | browser_file_upload {"paths": ["<full path>"]} | browser_tabs {"action": "list|new|select|close"}
    - Pages are big: never read a whole snapshot page by page. Use browser_find with the exact text you need
      (a button, a field label, the CV file name) and act on that element.
    - Uploading the CV: file inputs are hidden, so never target them. Click the VISIBLE button or area
