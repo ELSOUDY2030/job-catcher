@@ -332,7 +332,10 @@ def ready_to_apply():
 
 
 AGY_MODEL = "gemini-3.8-flash-medium"  # overridden by [apply] agy_model; list: `agy models`
-AGY_FALLBACK = ["gemini-4-argon-medium", "claude-sonnet-5-5-low"]  # [apply] agy_fallback: when a model is out
+AGY_FALLBACK = ["claude-sonnet-5-5-low"]  # [apply] agy_fallback: when a model is out
+# Never used, whatever the config or a fallback says (your call, 2026-11-12): Argon was slow (12 min for one
+# Easy Apply) and its clicks kept timing out.
+BLOCKED_MODELS = ("gemini-4-argon",)
 
 
 AGENT_SRC = HERE / "job-applier.md"            # the agent: no shell tool at all, fixed system prompt
@@ -354,6 +357,8 @@ def agy(prompt, out, conversation=None, minutes=20):
     conversation: resume that session (Submit continues the fill's session, in the same tab)."""
     # model: Gemini 3.8 Flash did the browser test in 106 s vs 242 s for Gemini 4 Argon (Medium);
     # the supervisor (audit.py + review) catches wrong answers either way.
+    if AGY_MODEL.startswith(BLOCKED_MODELS):
+        raise RuntimeError(f"{AGY_MODEL} is blocked (BLOCKED_MODELS)")
     cmd = [AGY, "--agent", "job-applier", "--settings", str(SETTINGS), "--output-format", "json",
            "--model", AGY_MODEL, "--print-timeout", f"{minutes}m", "--log-file", str(out.with_suffix(".log"))]
     cmd += (["--conversation", conversation] if conversation else []) + ["-p", prompt]
@@ -379,8 +384,10 @@ def switch_model(log_file, error="", limit=3):
     - "Individual quota reached": the model is gone for hours (Sonnet in agy, 2026-11-12), so at once."""
     global AGY_MODEL
     text = log_file.read_text(encoding="utf-8", errors="ignore") if log_file.exists() else ""
-    if ("quota reached" in error or text.count("No capacity available") >= limit) and AGY_FALLBACK:
-        old, AGY_MODEL = AGY_MODEL, AGY_FALLBACK.pop(0)
+    fallback = [m for m in AGY_FALLBACK if not m.startswith(BLOCKED_MODELS)]
+    if ("quota reached" in error or text.count("No capacity available") >= limit) and fallback:
+        old, AGY_MODEL = AGY_MODEL, fallback[0]
+        AGY_FALLBACK.remove(AGY_MODEL)
         log(f"[!] {old} is out (no capacity / quota): switching to {AGY_MODEL}")
 
 
