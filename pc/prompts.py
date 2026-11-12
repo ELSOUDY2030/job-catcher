@@ -11,7 +11,7 @@ Link: {url}
 {cv_line}
 
 ## Steps: do them in order, nothing else
-1. browser_tabs with action "new" and the link above. One tab, keep it open.
+1. browser_tabs with action "new" and the link above. Work in this tab (and the company tab it opens, if any).
 2. Screen the job with the "Screen" rules below. If it isn't a fit: status "skipped" with the reason.
 3. Apply with these fixed steps for this site:
 {recipe}
@@ -19,6 +19,9 @@ Link: {url}
    CAPTCHA, account creation, a failed upload, or ANY question whose answer is not in the facts below.
 5. Never press the final Submit / Send / Submit application button. Leave the tab on that last page.
 6. {snapshot_rule}
+7. Tabs, before your final reply: close (browser_tabs action "close") every tab you opened for this job that
+   isn't needed. "skipped": close all of them. "ready" / "needs_you": keep only the ONE tab with the form,
+   on its last page (close the job-board tab the company site was opened from).
 
 ## Your final reply: this JSON only
 {{"status": "ready" | "needs_you" | "skipped", "reason": "...", "cv_file": "<CV file name used>",
@@ -37,7 +40,8 @@ SUBMIT = """Continue the SAME application in the SAME browser tab. Its answers w
    If anything differs or a new question appeared, don't submit: reply {{"submitted": false, "reason": "..."}}.
 2. Click the final button once and wait for the confirmation.
 3. browser_take_screenshot with filename "{shot_name}".
-4. Final reply, JSON only:
+4. If it was submitted: close this tab (browser_tabs action "close"). If not, leave it open for the user.
+5. Final reply, JSON only:
 {{"submitted": true | false, "reason": "...", "confirmation": "<confirmation text shown on the page>"}}"""
 
 REVIEW = """You are a strict reviewer of a job application that an AI agent filled for Mohamed Nomer.
