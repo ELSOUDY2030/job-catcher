@@ -45,11 +45,11 @@ def _run(cmd, timeout, **kw):
 USE_CLAUDE = True
 
 
-def ask(prompt, claude_model=None, timeout=300):
+def ask(prompt, claude_model=None, timeout=300, force_claude=False):
     """-> (JSON object, who answered) or (None, reasons). Claude first, Gemini if Claude gives no JSON.
     USE_CLAUDE = False ([apply] use_claude = false): Gemini only, Claude Code's tokens untouched."""
     obj = parse_json(_run([CLAUDE, "-p", "--tools", "", "--output-format", "text"]
-                          + (["--model", claude_model] if claude_model else []), timeout, input=prompt)) if USE_CLAUDE else None
+                          + (["--model", claude_model] if claude_model else []), timeout, input=prompt)) if USE_CLAUDE or force_claude else None
     if isinstance(obj, dict):
         return obj, "Claude"
     # the prompt goes in a file: facts + CV are too long for a Windows command line
@@ -73,7 +73,7 @@ def consult(record, open_qs, facts_file, timeout=300):
     prompt = CONSULT.format(title=record["title"], company=record["company"], location=record["location"],
                             facts=Path(facts_file).read_text(encoding="utf-8"),
                             questions=json.dumps(open_qs, ensure_ascii=False, indent=1))
-    obj, who = ask(prompt, claude_model="claude-sonnet-5-5", timeout=timeout)
+    obj, who = ask(prompt, claude_model="claude-sonnet-5-5", timeout=timeout, force_claude=True)  # Sonnet even when use_claude = false
     got = {str(x.get("q")): str(x["a"]) for x in (obj or {}).get("answers") or []
            if isinstance(x, dict) and x.get("a") not in (None, "", "null")}
     return got, [x for x in open_qs if str(x.get("q", "")) not in got], who

@@ -403,6 +403,7 @@ def reply_json(run, key):
 
 
 APPS_LOG = CV_DIR / "applications_log.md"
+START_FILE = RECEIPTS / "start_after.txt"  # jobs GitHub found before this time are never applied to
 
 
 def already_logged(rec, log_text=None):
@@ -431,8 +432,8 @@ def read_json(path):
 
 def find_shot(job_id, since):
     """The Playwright MCP saves screenshots in its output folder (default: temp)."""
-    roots = [RECEIPTS / "_shots", Path(tempfile.gettempdir()) / "playwright-mcp-output"]
-    shots = [p for r in roots if r.exists() for p in r.rglob(f"{job_id}*.png") if p.stat().st_mtime >= since]
+    roots = [RECEIPTS / "_shots", Path(tempfile.gettempdir()) / "playwright-mcp-output", CV_DIR]  # agy saves it in its cwd
+    shots = [p for r in roots if r.exists() for p in (r.glob if r == CV_DIR else r.rglob)(f"{job_id}*.png") if p.stat().st_mtime >= since]
     return max(shots, key=lambda p: p.stat().st_mtime) if shots else None
 
 
@@ -669,11 +670,15 @@ def main():
             trigger_github()  # it reads the pc branch we just pushed
 
     seen = load_seen() if queued is None else {r["id"]: {**r, "status": "queued"} for r in queued}
+    if not START_FILE.exists():  # first run: only jobs found from now on (delete the file to reset)
+        START_FILE.write_text(datetime.now(timezone.utc).isoformat(timespec="minutes"), encoding="utf-8")
+    since = START_FILE.read_text(encoding="utf-8").strip() if queued is None else ""
     skip = words_regex(cfg.get("apply", {}).get("skip_titles"))
     queue = []
     for rec in sorted((r for r in seen.values() if r.get("status") == "queued" and r["id"] not in results),
                       key=lambda r: -r.get("score", 0)):
         reason = ("تدريب (internship): مش بنقدّم عليه" if skip and skip.search(rec["title"])  # never worth it
+                  else "قديمة: اتلقت قبل ما تشغّل النظام" if rec.get("first_seen", "") < since
                   else "موجودة في applications_log.md (اتقدّم عليها أو اتسابت قبل كده)" if already_logged(rec)
                   else None)
         if reason:
