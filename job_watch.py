@@ -150,6 +150,7 @@ def make_record(key, job, score, now, auto_min_score=None):
         "auto": auto,
         "first_seen": now.isoformat(timespec="minutes"),
         "last_seen": now.date().isoformat(),
+        "posted": job["posted"].isoformat(timespec="minutes") if job.get("posted") else None,  # PC: same-day cutoff
     }
     if auto and job.get("text"):  # the PC's CV maker screens it (Indeed pages can't be fetched); dropped when done
         rec["text"] = job["text"]

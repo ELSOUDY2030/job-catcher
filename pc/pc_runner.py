@@ -406,6 +406,19 @@ APPS_LOG = CV_DIR / "applications_log.md"
 START_FILE = RECEIPTS / "start_after.txt"  # jobs GitHub found before this time are never applied to
 
 
+def is_old(rec, since):
+    """Posted before the day the system was first started (receipts/start_after.txt)? Undated jobs: found
+    before that moment. ponytail: posted dates are UTC days; a job posted 00:00-02:00 Cairo counts as the day before."""
+    if not since:
+        return False
+    return rec["posted"][:10] < since[:10] if rec.get("posted") else rec.get("first_seen", "") < since
+
+
+assert is_old({"posted": "2026-11-12T23:00+00:00"}, "2026-11-13T15:00+00:00")
+assert not is_old({"posted": "2026-11-13T01:00+00:00", "first_seen": "2026-11-13T09:00+00:00"}, "2026-11-13T15:00+00:00")
+assert is_old({"first_seen": "2026-11-13T09:00+00:00"}, "2026-11-13T15:00+00:00") and not is_old({}, "")
+
+
 def already_logged(rec, log_text=None):
     """Already in applications_log.md (applied, drafted or skipped before)? Then don't spend
     3-4 minutes of Antigravity on it. Match: the job's id from its URL, or company + title on one line."""
@@ -678,7 +691,7 @@ def main():
     for rec in sorted((r for r in seen.values() if r.get("status") == "queued" and r["id"] not in results),
                       key=lambda r: -r.get("score", 0)):
         reason = ("تدريب (internship): مش بنقدّم عليه" if skip and skip.search(rec["title"])  # never worth it
-                  else "قديمة: اتلقت قبل ما تشغّل النظام" if rec.get("first_seen", "") < since
+                  else "قديمة: اتنشرت قبل يوم تشغيل النظام" if is_old(rec, since)
                   else "موجودة في applications_log.md (اتقدّم عليها أو اتسابت قبل كده)" if already_logged(rec)
                   else None)
         if reason:
