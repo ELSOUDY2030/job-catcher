@@ -553,15 +553,22 @@ def apply_one(rec, cfg, env, rules, cv_file=None):
     for n in range(3):  # a wizard can ask on more than one page
         if answers.get("status") != "ask":
             break
-        reply = ask_user(rec, answers.get("open") or [], env, cfg.get("apply", {}).get("ask_minutes", 30))
+        open_qs, agreed = answers.get("open") or [], {}
+        if open_qs and cfg.get("apply", {}).get("sonnet_consult", False):  # second opinion before waiting for you
+            facts = rdir / "facts_plus.md"
+            facts.write_text(FACTS.read_text(encoding="utf-8") + known_answers(), encoding="utf-8")
+            agreed, open_qs, who = review.consult(rec, open_qs, facts)
+            log(f"[i] consult ({who}): {len(agreed)} answered from the facts, {len(open_qs)} left for you")
+        reply = ask_user(rec, open_qs, env, cfg.get("apply", {}).get("ask_minutes", 30)) if open_qs else {}
         if reply is None:
-            qs = " | ".join(str(x.get("q", "")) for x in answers.get("open") or [])
+            qs = " | ".join(str(x.get("q", "")) for x in open_qs)
             return finish(rec, "needs_you", f"أسئلة مش في حقايقك (مافيش رد على Telegram): {qs}"[:600], env, rdir, answers)
         if reply == "skip":
             return finish(rec, "skipped", "انت قلت سيبها (Telegram)", env, rdir, answers)
         given.update(reply)
-        remember(reply)
-        run = agy(ANSWER.format(answers=json.dumps(reply, ensure_ascii=False), brief=brief), rdir / f"answer{n + 1}",
+        remember(reply)  # only yours: the consult's answers still go through the audit + review
+        run = agy(ANSWER.format(answers=json.dumps({**agreed, **reply}, ensure_ascii=False), brief=brief),
+                  rdir / f"answer{n + 1}",
                   conversation=run.get("conversation_id"))
         answers = reply_json(run, "status")
         if not answers:

@@ -20,6 +20,7 @@ agy_model = "gemini-4-hydrogen-medium"  # Antigravity model for applying (`agy m
 agy_fallback = ["gemini-4-hydrogen-high", "gemini-4-hydrogen-low"]  # used when the model above has no capacity
 # Antigravity runs Gemini Hydrogen only (user, 13 Nov 2026): Argon, Dragon, Flash 3.8 and claude-* are blocked in pc_runner.BLOCKED_MODELS
 sonnet_submit = true  # Hydrogen's final click didn't confirm (not a CAPTCHA): Sonnet (`claude -p` + the same Playwright MCP) clicks it
+sonnet_consult = true  # a question not in the facts: Sonnet answers it from the facts first (audit + review still check it); only what it can't support waits for you
 trigger_github = true # the PC starts the GitHub run every 30 min (GitHub's own schedule skips most runs)
 ask_minutes = 30  # a question not in your facts goes to Telegram with a suggested answer; wait this long
 notify_each = false  # false: results only in the hourly summary (screenshots stay in receipts/<id>/ on your PC)

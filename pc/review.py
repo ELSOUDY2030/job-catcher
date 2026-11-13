@@ -9,7 +9,7 @@ import subprocess
 import uuid
 from pathlib import Path
 
-from prompts import REVIEW
+from prompts import CONSULT, REVIEW
 
 CLAUDE = shutil.which("claude") or str(Path.home() / ".local" / "bin" / "claude.exe")
 AGY = shutil.which("agy") or str(Path(os.environ.get("LOCALAPPDATA", "")) / "agy" / "bin" / "agy.exe")
@@ -64,6 +64,19 @@ def ask(prompt, claude_model=None, timeout=300):
     finally:
         pfile.unlink(missing_ok=True)
     return (obj, "Gemini") if isinstance(obj, dict) else (None, "neither Claude nor Gemini gave JSON")
+
+
+def consult(record, open_qs, facts_file, timeout=300):
+    """Sonnet's second opinion on Hydrogen's open questions, before anyone waits for the user.
+    -> ({question: answer} it could support from the facts, questions still for the user, who).
+    These answers are NOT saved as yours: the audit + review still check them before the submit."""
+    prompt = CONSULT.format(title=record["title"], company=record["company"], location=record["location"],
+                            facts=Path(facts_file).read_text(encoding="utf-8"),
+                            questions=json.dumps(open_qs, ensure_ascii=False, indent=1))
+    obj, who = ask(prompt, claude_model="claude-sonnet-5-5", timeout=timeout)
+    got = {str(x.get("q")): str(x["a"]) for x in (obj or {}).get("answers") or []
+           if isinstance(x, dict) and x.get("a") not in (None, "", "null")}
+    return got, [x for x in open_qs if str(x.get("q", "")) not in got], who
 
 
 def review(record, unsure, facts_file, timeout=300):

@@ -45,7 +45,23 @@ RESUME = """Your run ended before you replied with the receipt (shell commands d
 tried one). Continue the SAME application in the SAME tab from where you stopped, using only the playwright
 browser tools, following {brief}. Never press the final submit. Final reply: the JSON receipt only."""
 
-ANSWER = """The user answered the open questions on Telegram: {answers}
+CONSULT = """You are the second opinion on a job application form ({title} at {company}, {location}).
+The form-filling agent stopped on questions it couldn't answer from the candidate's facts, each with its suggestion.
+Answer a question ONLY if the facts below (or "Answers the user gave before") support it directly, or it is a soft
+question (why this company, favorite feature, motivation): then 1-3 general, honest sentences that claim no product
+use, skill, year or result the facts don't have. A salary question: the facts' expectation for that country, with
+currency and period. Otherwise (years of a skill the facts don't state, personal data, passport/ID numbers,
+anything you'd have to guess) answer null: the user decides those. Never invent.
+
+## Candidate facts
+{facts}
+
+## Open questions (JSON)
+{questions}
+
+Reply with JSON only: {{"answers": [{{"q": "<question exactly as given>", "a": "<answer, or null>", "why": "<fact used>"}}]}}"""
+
+ANSWER = """The open questions are answered (by the user, or from the facts): {answers}
 Type or select exactly these answers in those fields (same tab, same page), then continue the steps of {brief}
 from there, with the same rules. Never press the final submit.
 Final reply: the same JSON receipt ("ask" again only for NEW questions you haven't asked yet)."""
