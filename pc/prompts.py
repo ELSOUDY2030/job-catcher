@@ -50,7 +50,9 @@ The form-filling agent stopped on questions it couldn't answer from the candidat
 Answer a question ONLY if the facts below (or "Answers the user gave before") support it directly, or it is a soft
 question (why this company, favorite feature, motivation): then 1-3 general, honest sentences that claim no product
 use, skill, year or result the facts don't have. A salary question: the facts' expectation for that country, with
-currency and period. Otherwise (years of a skill the facts don't state, personal data, passport/ID numbers,
+currency and period. A question with fixed choices where the fact sits between them (facts: 2 weeks notice;
+choices: Immediately / 1 month): pick the CLOSEST choice, on a tie the safer one (later start, lower claim), and
+say so in "why"; these general questions shouldn't stop the application. Otherwise (years of a skill the facts don't state, personal data, passport/ID numbers,
 anything you'd have to guess) answer null: the user decides those. Never invent.
 
 ## Candidate facts
