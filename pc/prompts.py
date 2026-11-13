@@ -54,7 +54,10 @@ SUBMIT = """Continue the SAME application in the SAME browser tab. Its answers w
 1. browser_find the final button ("Submit application" / "Submit" / "Send"). Check that the form still shows
    these answers: {answers}
    If anything differs or a new question appeared, don't submit: reply {{"submitted": false, "reason": "..."}}.
-2. Click the final button once and wait for the confirmation.
+2. Click the final button once and wait for the confirmation. If the form refuses because a REQUIRED consent
+   checkbox is unticked (privacy notice, keep my CV on file, career emails: marked * / "This field is required"),
+   tick those required boxes only and click once more. A CAPTCHA ("I'm not a robot", "captcha is invalid",
+   an image challenge): never solve it; reply submitted false with reason "captcha".
 3. browser_take_screenshot with filename "{shot_name}".
 4. If it was submitted: close this tab (browser_tabs action "close"). If not, leave it open for the user.
 5. Final reply, JSON only:

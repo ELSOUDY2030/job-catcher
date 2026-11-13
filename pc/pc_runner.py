@@ -336,11 +336,11 @@ def ready_to_apply():
 
 
 AGY_MODEL = "gemini-4-hydrogen-medium"  # overridden by [apply] agy_model; list: `agy models`
-AGY_FALLBACK = ["gemini-4-hydrogen-high", "gemini-3.8-flash-medium"]  # [apply] agy_fallback: when a model is out
+AGY_FALLBACK = ["gemini-4-hydrogen-high", "gemini-4-hydrogen-low"]  # [apply] agy_fallback: when a model is out
 # Never used in Antigravity, whatever the config or a fallback says (your call, 2026-11-12): Argon was slow
 # (12 min for one Easy Apply) and its clicks kept timing out; Claude models run only through Claude Code
 # (CV, review), never through Antigravity.
-BLOCKED_MODELS = ("gemini-4-argon", "claude-")
+BLOCKED_MODELS = ("gemini-4-argon", "gemini-4-dragon", "gemini-3.8-flash", "claude-")
 
 
 AGENT_SRC = HERE / "job-applier.md"            # the agent: no shell tool at all, fixed system prompt
@@ -447,7 +447,7 @@ def qa_text(questions, limit=15):
 def finish(rec, status, note, env, rdir, answers=None, shot=None, review_note=""):
     icon = {"applied": "✅ اتقدّم", "needs_you": "✋ محتاجك", "blocked": "⛔ اتوقف قبل الإرسال",
             "skipped": "⏭ اتساب"}[status]
-    head = (f"{icon}: <b>{html.escape(rec['title'])}</b>\n🏢 {html.escape(rec['company'])} · ⭐ {rec['score']}/10\n"
+    head = (f"{icon}: <b>{html.escape(rec['title'])}</b>\n🏢 {html.escape(rec['company'])} · ⭐ {rec.get('score', '-')}/10\n"
             f"{html.escape(note or '')[:600]}\n{rec['url']}")
     body = qa_text((answers or {}).get("questions", []))
     if shot:
@@ -597,6 +597,10 @@ def apply_one(rec, cfg, env, rules, cv_file=None):
                             shot_name=f"{rec['id']}.png"), rdir / "submit", conversation=run.get("conversation_id"),
               minutes=10)
     result = reply_json(sub, "submitted") or {}
+    if (not result.get("submitted") and cfg.get("apply", {}).get("sonnet_submit", False)
+            and "captcha" not in str(result.get("reason", "")).lower()):
+        log(f"[i] Hydrogen's submit didn't confirm ({str(result.get('reason', 'no receipt'))[:120]}): Sonnet tries")
+        result = sonnet_submit(answers, rec["id"], rdir) or result
     (rdir / "result.json").write_text(json.dumps(result, ensure_ascii=False, indent=1), encoding="utf-8")
     if result.get("submitted"):
         append_log(rec, key, answers, result.get("confirmation", ""))
@@ -605,6 +609,29 @@ def apply_one(rec, cfg, env, rules, cv_file=None):
         return finish(rec, "applied", result.get("confirmation", ""), env, rdir, answers, shot, review_note)
     return finish(rec, "needs_you", result.get("reason") or "Submit step didn't confirm.", env, rdir, answers,
                   shot, review_note)
+
+
+def sonnet_submit(answers, job_id, rdir):
+    """The final click by Sonnet (`claude -p`) on the SAME Playwright MCP, so the same job Edge tab.
+    Only after Hydrogen's submit didn't confirm and it wasn't a CAPTCHA; the answers were already checked."""
+    mcp = RECEIPTS / "_sonnet_mcp.json"
+    mcp.write_text(json.dumps({"mcpServers": {"playwright": {"type": "http", "url": f"http://localhost:{MCP_PORT}/mcp"}}}))
+    prompt = ("The job application below is already filled in the job browser (Playwright MCP). browser_tabs list, "
+              "select the tab with the application form (never open, change or close other tabs), then: "
+              + SUBMIT.format(answers=json.dumps(answers.get("questions", []), ensure_ascii=False), shot_name=f"{job_id}.png"))
+    try:
+        out = subprocess.run([review.CLAUDE, "-p", "--model", "claude-sonnet-5-5", "--strict-mcp-config", "--mcp-config",
+                              str(mcp), "--allowedTools", "mcp__playwright", "--output-format", "json"], input=prompt,
+                             cwd=CV_DIR, creationflags=NO_WINDOW, capture_output=True, text=True, encoding="utf-8",
+                             errors="replace", timeout=600).stdout
+    except subprocess.TimeoutExpired:
+        out = ""
+    (rdir / "sonnet_submit.json").write_text(out or "", encoding="utf-8")
+    run = review.parse_json(out) or {}
+    log(f"[i] sonnet submit: {run.get('subtype', 'no result')}, ${run.get('total_cost_usd', 0):.3f}, "
+        f"{run.get('num_turns', '?')} turns")
+    res = review.parse_json(str(run.get("result") or ""))
+    return res if isinstance(res, dict) and "submitted" in res else None
 
 
 # ---------- main ----------
@@ -622,13 +649,19 @@ def main():
     cutoff = (datetime.now(timezone.utc) - timedelta(days=KEEP_DAYS)).isoformat()
     results = {k: v for k, v in results.items() if v.get("at", "") >= cutoff}
 
-    pc = {"jobs": scan(cfg), "results": results, "scanned_at": datetime.now(timezone.utc).isoformat(timespec="minutes"),
+    if "--jobs" in sys.argv:  # test / plan run: these records instead of the scrapers and the GitHub queue
+        queued = read_json(sys.argv[sys.argv.index("--jobs") + 1]) or []
+        pc = {"warned": "", **pc, "results": results, "warnings": []}
+    else:
+        queued = None
+    pc = pc if queued is not None else {"jobs": scan(cfg), "results": results, "scanned_at": datetime.now(timezone.utc).isoformat(timespec="minutes"),
           "warned": pc.get("warned", ""), "warnings": []}  # warnings show up in the hourly summary
-    save_pc(pc)  # GitHub gets the new Wuzzuf/Bayt jobs even if applying fails below
-    if cfg.get("apply", {}).get("trigger_github", True):
-        trigger_github()  # it reads the pc branch we just pushed
+    if queued is None:
+        save_pc(pc)  # GitHub gets the new Wuzzuf/Bayt jobs even if applying fails below
+        if cfg.get("apply", {}).get("trigger_github", True):
+            trigger_github()  # it reads the pc branch we just pushed
 
-    seen = load_seen()
+    seen = load_seen() if queued is None else {r["id"]: {**r, "status": "queued"} for r in queued}
     skip = words_regex(cfg.get("apply", {}).get("skip_titles"))
     queue = []
     for rec in sorted((r for r in seen.values() if r.get("status") == "queued" and r["id"] not in results),
@@ -672,7 +705,7 @@ def main():
                 pc["results"][rec["id"]] = finish(rec, "skipped", skip, env, RECEIPTS / rec["id"])
                 save_pc(pc)
                 continue
-            log(f"[>] applying: {rec['title']} | {rec['company']} | ⭐ {rec['score']} | CV: "
+            log(f"[>] applying: {rec['title']} | {rec['company']} | ⭐ {rec.get('score', '-')} | CV: "
                 f"{cv_file.name if cv_file else 'from cv_menu.md'}")
             try:
                 pc["results"][rec["id"]] = apply_one(rec, cfg, env, rules, cv_file)
