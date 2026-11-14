@@ -409,7 +409,7 @@ START_FILE = RECEIPTS / "start_after.txt"  # jobs GitHub found before this time 
 def is_old(rec, since):
     """Posted before the day the system was first started (receipts/start_after.txt)? Undated jobs: found
     before that moment. ponytail: posted dates are UTC days; a job posted 00:00-02:00 Cairo counts as the day before."""
-    if not since:
+    if not since or rec.get("status_at"):  # status_at = you pressed 🚀 on Telegram: always apply
         return False
     return rec["posted"][:10] < since[:10] if rec.get("posted") else rec.get("first_seen", "") < since
 
@@ -417,6 +417,7 @@ def is_old(rec, since):
 assert is_old({"posted": "2026-11-12T23:00+00:00"}, "2026-11-13T15:00+00:00")
 assert not is_old({"posted": "2026-11-13T01:00+00:00", "first_seen": "2026-11-13T09:00+00:00"}, "2026-11-13T15:00+00:00")
 assert is_old({"first_seen": "2026-11-13T09:00+00:00"}, "2026-11-13T15:00+00:00") and not is_old({}, "")
+assert not is_old({"first_seen": "2026-11-10T09:00+00:00", "status_at": "2026-11-14T11:00+00:00"}, "2026-11-14T10:32+00:00")
 
 
 def already_logged(rec, log_text=None):
