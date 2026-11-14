@@ -98,5 +98,8 @@ Job: {title} | {company} | {location}
 
 Reply with JSON only, no other text:
 {{"problems": [{{"q": "<question>", "a": "<answer>", "why": "<what is wrong, citing the facts section>"}}]}}
-Use an empty list if every answer is supported.
+Use an empty list if every answer is supported. List ONLY answers that contradict the facts or claim
+something the facts don't have: never an answer the facts confirm (e.g. "Man" when the facts say Male,
+"requires visa sponsorship" when the facts say not authorized outside Egypt). "I prefer not to answer" on a
+diversity / demographic question is always fine.
 """

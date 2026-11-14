@@ -12,7 +12,8 @@ summary_minutes = 60
 
 [apply]  # done on YOUR PC by pc/pc_runner.py (Antigravity + the job-hunter skill), every 30 minutes
 auto_min_score = 8   # jobs scoring this or more are queued automatically (🤖); the rest get a 🚀 button
-per_cycle = 4        # max applications per 30-minute PC cycle (= 8/hour, the job-hunter skill's pace)
+per_cycle = 10       # max applications per PC cycle: one after another ~2-4 min each, so a cycle fills its 30 min.
+                     # Queue order: Egypt, Gulf, remote, Europe (score only inside a region)
 claude_review = true # answers the rule check can't verify are reviewed by `claude -p` before Submit
 use_claude = false  # false: the CV and the answer review run on Gemini (agy) too, no Claude Code tokens
 cv_model = "claude-sonnet-5-5"  # makes the next job's CV while agy applies (pc/cv_maker.py); "" = ready CVs only

@@ -306,6 +306,85 @@ def ensure_edge(urls=(), wait=30):
     return False
 
 
+USER_TABS = RECEIPTS / "user_tabs.json"  # tabs reopened for you: never closed by the runner
+
+
+def cdp(path, method="GET"):
+    """The job Edge's DevTools HTTP endpoint (/json/list, /json/new, /json/close)."""
+    with urllib.request.urlopen(urllib.request.Request(f"http://127.0.0.1:{CDP_PORT}/json/{path}", method=method),
+                                timeout=10) as r:
+        body = r.read()
+    return json.loads(body) if body.lstrip()[:1] in (b"{", b"[") else {}
+
+
+def job_pages():
+    """Real pages, most recently used first, without the ones reopened for you."""
+    keep = set(read_json(USER_TABS) or [])
+    return [t for t in cdp("list") if t["type"] == "page" and t["id"] not in keep]
+
+
+def stop_url():
+    """The page a stopped job is on (saved, so it can be reopened after its tab is closed)."""
+    try:
+        return next((t["url"] for t in job_pages() if t["url"].startswith("http")), "")
+    except (OSError, ValueError):
+        return ""
+
+
+def close_tabs():
+    """Every job Edge tab closed after each job, except one blank one (Edge closes with its last tab) and the
+    ones reopened for you. A stopped job's page is in its result ("stop_url"): `--open <company>` or
+    "افتح <company>" on Telegram brings it back."""
+    try:
+        open_ = {t["id"] for t in cdp("list") if t["type"] == "page"}
+        USER_TABS.write_text(json.dumps(sorted(set(read_json(USER_TABS) or []) & open_)))  # forget closed ones
+        pages = job_pages()
+        blank = next((t for t in pages if not t["url"].startswith("http")), None) or cdp("new?about:blank", "PUT")
+        for t in pages:
+            if t["id"] != blank.get("id"):
+                cdp(f"close/{t['id']}")
+    except (OSError, ValueError) as e:
+        log(f"[!] closing tabs: {e}")
+
+
+def reopen(query):
+    """'Adria' / a job id -> the newest stopped job that matches, opened in the job Edge. -> a line for you."""
+    rows = [json.loads(x) for x in (RECEIPTS / "index.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
+    q = query.lower()
+    hit = next((r for r in reversed(rows) if r.get("status") in ("needs_you", "blocked")
+                and (r["id"] == query or q in r["company"].lower() or q in r["title"].lower())), None)
+    if not hit:
+        return f"مالقيتش وظيفة واقفة اسمها «{query}»."
+    if not ensure_edge():
+        return "Edge بتاع الوظايف مش راضي يفتح."
+    tab = cdp("new?" + (hit.get("stop_url") or hit["url"]), "PUT")
+    USER_TABS.write_text(json.dumps(sorted(set(read_json(USER_TABS) or []) | {tab.get("id")})))
+    return f"🔗 فتحتلك {hit['title']} · {hit['company']} في Edge بتاع الوظايف (مش هيتقفل لحد ما تقفله انت)."
+
+
+def telegram_opens(env):
+    """'افتح <company>' / 'open <company>' sent to the bot -> reopen(). Read at the start of each run, before the
+    GitHub run (which confirms the updates). ponytail: a message sent just before a scheduled GitHub run is missed."""
+    if not (env.get("token") and env.get("chat_id")):
+        return
+    seen_file = RECEIPTS / "tg_open_last.txt"
+    last = int(seen_file.read_text() or 0) if seen_file.exists() else 0
+    try:
+        updates = telegram_bot.call(env["token"], "getUpdates", timeout=0, allowed_updates=["callback_query", "message"])
+    except Exception as e:
+        log(f"[!] telegram (open requests): {e}")
+        return
+    for u in updates:
+        m = u.get("message") or {}
+        hit = re.match(r"^\s*(?:افتح|open)\s+(.+)", m.get("text") or "", re.I)
+        if u["update_id"] > last and hit and str(m.get("chat", {}).get("id")) == str(env["chat_id"]):
+            answer = reopen(hit[1].strip())
+            log(f"[i] {answer}")
+            notify(env, html.escape(answer))
+    if updates:
+        seen_file.write_text(str(max(u["update_id"] for u in updates)))
+
+
 def ensure_mcp(wait=90):
     """Playwright MCP on MCP_PORT, attached to the job Edge over CDP (no window). agy's mcp_config points at it."""
     if not ensure_edge():
@@ -406,6 +485,22 @@ APPS_LOG = CV_DIR / "applications_log.md"
 START_FILE = RECEIPTS / "start_after.txt"  # jobs GitHub found before this time are never applied to
 
 
+EGYPT = re.compile(r"\b(egypt|cairo|giza|alexandria|maadi|مصر)\b", re.I)
+GULF = re.compile(r"\b(united arab emirates|uae|dubai|abu dhabi|sharjah|saudi arabia|saudi|ksa|riyadh|jeddah|dammam|"
+                  r"khobar|qatar|doha|kuwait|bahrain|manama|oman|muscat)\b", re.I)
+REMOTE = re.compile(r"\b(remote|worldwide|anywhere|remotive|remoteok|himalayas|jobicy)\b", re.I)
+
+
+def region_rank(rec):
+    """The user's order (14 Nov 2026): Egypt, then the Gulf, then remote, then Europe and the rest.
+    The score only orders jobs inside the same region."""
+    where = f"{rec.get('location', '')} {rec.get('source', '')}"
+    return 0 if EGYPT.search(where) else 1 if GULF.search(where) else 2 if REMOTE.search(where) else 3
+
+
+assert [region_rank({"location": x}) for x in ("Cairo, Egypt", "Dubai, UAE", "Remote", "Berlin, Germany")] == [0, 1, 2, 3]
+
+
 def is_old(rec, since):
     """Posted before the day the system was first started (receipts/start_after.txt)? Undated jobs: found
     before that moment. ponytail: posted dates are UTC days; a job posted 00:00-02:00 Cairo counts as the day before."""
@@ -476,6 +571,8 @@ def finish(rec, status, note, env, rdir, answers=None, shot=None, review_note=""
             notify(env, "\n\n".join(p for p in (head, body, review_note) if p))
     entry = {"at": datetime.now(timezone.utc).isoformat(timespec="minutes"), "status": status, "note": (note or "")[:300],
              "proof": f"receipts/{rdir.name}/confirmation.png" if shot else ""}
+    if status in ("needs_you", "blocked"):  # its tab gets closed: keep where it stopped
+        entry["stop_url"] = stop_url() or rec["url"]
     with (RECEIPTS / "index.jsonl").open("a", encoding="utf-8") as f:  # one line per job, for a quick review later
         f.write(json.dumps({"id": rec["id"], "title": rec["title"], "company": rec["company"], "url": rec["url"],
                             **entry}, ensure_ascii=False) + "\n")
@@ -662,6 +759,7 @@ def main():
     cfg = tomllib.loads((ROOT / "config.toml").read_text(encoding="utf-8"))
     env = read_json(ENV_FILE) or {}  # only needed for notify_each; the hourly summary comes from GitHub
     env["notify_each"] = cfg.get("apply", {}).get("notify_each", False)
+    telegram_opens(env)
     global AGY_MODEL
     AGY_FALLBACK[:] = cfg.get("apply", {}).get("agy_fallback", AGY_FALLBACK)
     AGY_MODEL = review.AGY_MODEL = cfg.get("apply", {}).get("agy_model", AGY_MODEL)
@@ -690,7 +788,7 @@ def main():
     skip = words_regex(cfg.get("apply", {}).get("skip_titles"))
     queue = []
     for rec in sorted((r for r in seen.values() if r.get("status") == "queued" and r["id"] not in results),
-                      key=lambda r: -r.get("score", 0)):
+                      key=lambda r: (region_rank(r), -r.get("score", 0))):
         reason = ("تدريب (internship): مش بنقدّم عليه" if skip and skip.search(rec["title"])  # never worth it
                   else "قديمة: اتنشرت قبل يوم تشغيل النظام" if is_old(rec, since)
                   else "موجودة في applications_log.md (اتقدّم عليها أو اتسابت قبل كده)" if already_logged(rec)
@@ -737,6 +835,7 @@ def main():
                 pc["results"][rec["id"]] = apply_one(rec, cfg, env, rules, cv_file)
             except Exception as e:  # one job going wrong must not stop the others
                 pc["results"][rec["id"]] = finish(rec, "needs_you", f"runner error: {e}", env, RECEIPTS / rec["id"])
+            close_tabs()  # nothing left open between jobs (a stopped one: its stop_url reopens it)
             save_pc(pc)  # after every job: a crash never loses a result
 
 
@@ -775,6 +874,9 @@ if __name__ == "__main__":
     if "--login" in sys.argv:  # once: sign in to the job sites in the job Edge (it keeps the logins)
         ensure_edge(LOGIN_SITES)
         print("Sign in on each tab of the new Edge window (LinkedIn, Indeed, Wuzzuf, Bayt). Keep the window open.")
+        sys.exit()
+    if "--open" in sys.argv:  # reopen a stopped job's page in the job Edge: --open Adria
+        print(reopen(" ".join(sys.argv[sys.argv.index("--open") + 1:])))
         sys.exit()
     lock = single_instance()
     if lock is None:

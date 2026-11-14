@@ -87,4 +87,11 @@ def review(record, unsure, facts_file, timeout=300):
     obj, who = ask(prompt, timeout=timeout)
     if obj is None or not isinstance(obj.get("problems"), list):
         raise RuntimeError(f"review: {who}")
+    if obj["problems"] and who == "Gemini":  # Gemini blocked Wise on 3 answers the facts confirm (14 Nov 2026):
+        prompt = REVIEW.format(title=record["title"], company=record["company"], location=record["location"],
+                               facts=Path(facts_file).read_text(encoding="utf-8"),
+                               answers=json.dumps(obj["problems"], ensure_ascii=False, indent=1))
+        second, who2 = ask(prompt, claude_model="claude-sonnet-5-5", timeout=timeout, force_claude=True)
+        if who2 == "Claude" and isinstance(second.get("problems"), list):  # Sonnet confirms which ones block
+            return second["problems"], "Gemini + Sonnet"
     return obj["problems"], who

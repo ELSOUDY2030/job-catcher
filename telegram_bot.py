@@ -52,10 +52,16 @@ def apply_presses(updates, chat_id, seen, now):
     done = []
     for update in updates:
         query = update.get("callback_query")
-        if not query or str(query.get("message", {}).get("chat", {}).get("id")) != str(chat_id):
-            continue  # only presses in our own chat
+        if not query:
+            continue
+        where = str(query.get("message", {}).get("chat", {}).get("id"))
+        if where != str(chat_id).strip():  # only presses in our own chat (.strip: a secret pasted with a newline)
+            print(f"[!] telegram: a press from another chat ignored ({where[-4:]} vs {str(chat_id).strip()[-4:]})")
+            continue
         action, _, job_id = (query.get("data") or "").partition(":")
         rec = by_id.get(job_id)
+        if action in ACTIONS and not rec:
+            print(f"[!] telegram: a press for an unknown job id ignored: {job_id}")
         if action in ACTIONS and rec:
             rec["status"] = ACTIONS[action]
             rec["status_at"] = now.isoformat(timespec="minutes")
