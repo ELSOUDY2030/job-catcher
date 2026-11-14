@@ -67,6 +67,10 @@ NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 KEEP_DAYS = 30
 
 
+if sys.stdout:  # pythonw has none; a cp1252 console crashed on "⭐" before the first job (14 Nov 2026)
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+
 def log(msg):
     line = f"{datetime.now():%Y-%m-%d %H:%M:%S} {msg}"
     print(line)
