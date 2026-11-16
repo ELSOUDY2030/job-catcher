@@ -41,9 +41,9 @@ import review                                   # noqa: E402
 import cv_maker                                 # noqa: E402
 from concurrent.futures import ThreadPoolExecutor  # noqa: E402
 import jobsite                                 # noqa: E402
-from prompts import ANSWER, BRIEF, FILL, RESUME, SUBMIT  # noqa: E402
+from prompts import ANSWER, BRIEF, FILL, RESUME, SEARCH, SEARCH_BRIEF, SUBMIT  # noqa: E402
 import telegram_bot                            # noqa: E402
-from sources import jobspy_boards, words_regex, wuzzuf  # noqa: E402
+from sources import jobspy_boards, make_job, words_regex, wuzzuf  # noqa: E402
 
 RECEIPTS = ROOT / "receipts"
 LOG = RECEIPTS / "runner.log"
@@ -484,6 +484,53 @@ def scan(cfg):
             continue
         log(f"[i] {name}: {len(found)} jobs")
         jobs += [{**j, "posted": j["posted"].isoformat() if j.get("posted") else None} for j in found]
+    try:
+        found = agent_search(cfg.get("agent_search", {}))
+    except Exception as e:
+        log(f"[!] agent search: {e}")
+        found = []
+    jobs += [{**j, "posted": j["posted"].isoformat() if j.get("posted") else None} for j in found]
+    return jobs
+
+
+SEARCH_LAST = RECEIPTS / "agent_search_last.txt"
+SITE_URL = {"naukrigulf": re.compile(r"^https://www\.naukrigulf\.com/[a-z0-9-]+-jid-\d+"),
+            "gulftalent": re.compile(r"^https://www\.gulftalent\.com/[a-z-]+/jobs/[a-z0-9-]+-\d+")}
+
+
+def search_jobs(reply):
+    """Hydrogen's search reply -> jobs. Only links of the searched sites, trimmed to the job page (no tokens)."""
+    jobs = []
+    for x in (reply or {}).get("jobs") or []:
+        url = str(x.get("url") or "")
+        for site, pattern in SITE_URL.items():
+            m = pattern.match(url)
+            if m and x.get("title"):
+                jobs.append(make_job(x["title"], x.get("company", ""), x.get("location", ""), m[0],
+                                     x.get("posted") or None, site))
+    return jobs
+
+
+def agent_search(section):
+    """Once a day ([agent_search] every_hours): Hydrogen reads the search pages of NaukriGulf / GulfTalent in the
+    job Edge, like you would. They block scripts, so this (and their alert emails) is how their jobs come in."""
+    if not section.get("enabled", False) or not section.get("pages"):
+        return []
+    last = SEARCH_LAST.read_text().strip() if SEARCH_LAST.exists() else ""
+    if last and datetime.now(timezone.utc) - datetime.fromisoformat(last) < timedelta(hours=section.get("every_hours", 24)):
+        return []
+    if not ensure_mcp():
+        return []
+    install_agent()
+    rdir = RECEIPTS / "_search"
+    rdir.mkdir(parents=True, exist_ok=True)
+    brief = rdir / "brief.md"
+    brief.write_text(SEARCH_BRIEF.format(today=datetime.now().date().isoformat(),
+                                         pages="\n".join(f"- {u}" for u in section["pages"])), encoding="utf-8")
+    run = agy(SEARCH.format(brief=brief), rdir / "search", minutes=section.get("minutes", 15))
+    jobs = search_jobs(reply_json(run, "jobs"))
+    SEARCH_LAST.write_text(datetime.now(timezone.utc).isoformat(timespec="minutes"))  # even 0: once a day is enough
+    log(f"[i] agent search (NaukriGulf / GulfTalent): {len(jobs)} jobs")
     return jobs
 
 

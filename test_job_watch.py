@@ -560,5 +560,18 @@ assert [(j["title"], j["company"], j["location"], j["url"]) for j in _j] == [
 assert jobsite.recipe_key("https://www.gulftalent.com/uae/jobs/ml-engineer-628689") == "gulftalent"
 assert jobsite.recipe_key(_ea.parse_naukrigulf(_ng, _rcv)[0]["url"]) == "naukrigulf"
 
+# daily Hydrogen search: only the searched sites' job links, trimmed (no tracking / tokens)
+_r = {"jobs": [
+    {"title": "AI Engineer", "company": "Lamdax", "location": "Riyadh, Saudi Arabia", "posted": "2026-11-14",
+     "url": "https://www.naukrigulf.com/ai-engineer-jobs-in-riyadh-saudi-arabia-in-lamdax-n-cd-1-jid-291026501416?x=1"},
+    {"title": "ML Engineer", "company": "SCC", "location": "Dubai, UAE", "posted": "",
+     "url": "https://www.gulftalent.com/uae/jobs/ml-engineer-628689?jwt=FAKE"},
+    {"title": "Phish", "company": "x", "location": "", "url": "https://evil.example/jid-1"}]}
+_s = pc_runner.search_jobs(_r)
+assert [(j["source"], j["url"]) for j in _s] == [
+    ("naukrigulf", "https://www.naukrigulf.com/ai-engineer-jobs-in-riyadh-saudi-arabia-in-lamdax-n-cd-1-jid-291026501416"),
+    ("gulftalent", "https://www.gulftalent.com/uae/jobs/ml-engineer-628689")]
+assert pc_runner.agent_search({"enabled": False, "pages": ["x"]}) == []
+
 print("ok")
 

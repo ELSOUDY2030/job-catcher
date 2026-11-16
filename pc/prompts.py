@@ -68,6 +68,25 @@ Type or select exactly these answers in those fields (same tab, same page), then
 from there, with the same rules. Never press the final submit.
 Final reply: the same JSON receipt ("ask" again only for NEW questions you haven't asked yet)."""
 
+# a once-a-day search of sites that block scripts, by Hydrogen in the job Edge (pc_runner.agent_search)
+SEARCH = """Read the file {brief} with read_file, in one call, and follow it exactly.
+Your final reply is the JSON it describes, and nothing else."""
+
+SEARCH_BRIEF = """# Job search brief (your whole task). Today is {today}.
+Open each page below in ONE new tab (browser_tabs "new" once, then browser_navigate for the next pages).
+On each page: browser_snapshot once, then list every job card shown on that first page of results.
+Don't open the jobs, don't scroll for more, don't log in, don't apply, don't click anything else.
+If a page shows a login wall, a CAPTCHA or "Access Denied": skip it and go to the next.
+When done, close the tab (browser_tabs "close").
+
+Pages:
+{pages}
+
+Final reply, JSON only:
+{{"jobs": [{{"title": "...", "company": "...", "location": "City, Country", "url": "<the job's own link, full https>",
+           "posted": "<YYYY-MM-DD: today minus what the card says ('2d', '1 Nov', '3 days ago'); empty if not shown>"}}]}}
+"""
+
 SUBMIT = """Continue the SAME application in the SAME browser tab. Its answers were checked and approved.
 1. browser_find the final button ("Submit application" / "Submit" / "Send"). Check that the form still shows
    these answers: {answers}
