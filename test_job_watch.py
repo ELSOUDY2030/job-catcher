@@ -534,5 +534,31 @@ assert pc_runner.import_answers() == 2
 assert json.loads(pc_runner.MY_ANSWERS.read_text(encoding="utf-8")) == {"Gender?": "Man", "Travel %?": "10%"}
 pc_runner.QUESTIONS_FILE, pc_runner.MY_ANSWERS = _saved
 
+# NaukriGulf + GulfTalent alert emails (shapes from real emails of 16 Nov / 19 Oct 2026; tokens faked)
+from sources import email_alerts as _ea
+_rcv = datetime(2026, 11, 16, 7, 0, tzinfo=timezone.utc)
+_ng = ('<a href="https://ccs-tracking.naukrigulf.com?data=x&amp;redirect=https%3A%2F%2Fwww.naukrigulf.com%2Fnglogin'
+       '%2Fuser%2FmailerLogin%3Fconmailer%3DFAKE%26rUrl%3Dhttps%3A%2F%2Fwww.naukrigulf.com%2Fai-engineer-jobs-in-riyadh'
+       '-saudi-arabia-in-lamdax-2-to-5-years-n-cd-1-jid-291026501416%253Futm_medium%253Demail">'
+       '<table><tr><td>AI Engineer</td><td>Lamdax</td><td>2 - 5 Years</td><td>Riyadh - Saudi Arabia</td>'
+       '<td>28 Oct</td></tr></table></a>'
+       '<a href="https://ccs-tracking.naukrigulf.com?redirect=https%3A%2F%2Fwww.naukrigulf.com%2Fx-jid-1"><td>AI Lead</td>'
+       '<td>Data Scientist</td><td>crucifer</td><td>2 - 9 Years</td><td>Alexandria - Egypt , Cairo - Egypt</td>'
+       '<td>Easy Apply</td><td>2d</td></a><a href="https://www.naukrigulf.com/unsubscribe">Unsubscribe</a>')
+_j = _ea.parse_naukrigulf(_ng, _rcv)
+assert [(j["title"], j["company"], j["location"]) for j in _j] == [
+    ("AI Engineer", "Lamdax", "Riyadh, Saudi Arabia"), ("AI Lead", "Data Scientist", "Alexandria, Egypt; Cairo, Egypt")]
+assert _j[0]["url"] == "https://www.naukrigulf.com/ai-engineer-jobs-in-riyadh-saudi-arabia-in-lamdax-2-to-5-years-n-cd-1-jid-291026501416"
+assert "FAKE" not in str(_j)  # the auto-login link is never kept
+assert _j[0]["posted"].date().isoformat() == "2026-10-28" and _j[1]["posted"].date().isoformat() == "2026-11-14"
+_gt = ('<a href="https://www.gulftalent.com/uae/jobs/ml-engineer-628689?utm_source=jobalert&amp;jwt=FAKE.TOKEN">'
+       '<p>ML Engineer</p><p>SCC Services Romania</p><p>Dubai, UAE</p><p> 4 days ago </p><img alt="x"><p>Easy Apply</p></a>'
+       '<a href="https://www.gulftalent.com/candidates/home?jwt=FAKE">Mohammad</a>')
+_j = _ea.parse_gulftalent(_gt, _rcv)
+assert [(j["title"], j["company"], j["location"], j["url"]) for j in _j] == [
+    ("ML Engineer", "SCC Services Romania", "Dubai, UAE", "https://www.gulftalent.com/uae/jobs/ml-engineer-628689")]
+assert jobsite.recipe_key("https://www.gulftalent.com/uae/jobs/ml-engineer-628689") == "gulftalent"
+assert jobsite.recipe_key(_ea.parse_naukrigulf(_ng, _rcv)[0]["url"]) == "naukrigulf"
+
 print("ok")
 

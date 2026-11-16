@@ -86,6 +86,22 @@ a. If the page shows "Log in" / "Sign up" instead of your account: stop with sta
    Wuzzuf in Edge).
 b. If it says "Applied" or the job is closed: status "skipped".
 c. Click "Apply For Job", answer every question from the facts, and stop before the final submit button.""",
+    "naukrigulf": """NaukriGulf (you are logged in to NaukriGulf in Edge):
+a. If it asks to log in or register: stop with status "needs_you" (log in to NaukriGulf in Edge).
+b. If it says "Applied" or the job is closed/expired: status "skipped".
+c. "Apply on company website": click it, switch to the new tab with browser_tabs, and follow the external site
+   steps below. "Apply" / "Easy Apply": click it, answer every question from the facts, attach {cv_file} if asked,
+   and stop before the final submit button.
+
+""" + EXTERNAL,
+    "gulftalent": """GulfTalent (you are logged in to GulfTalent in Edge):
+a. If it asks to log in or register: stop with status "needs_you" (log in to GulfTalent in Edge).
+b. If it says "Applied" / "You have applied" or the job is closed: status "skipped".
+c. "Apply on company website": click it, switch to the new tab with browser_tabs, and follow the external site
+   steps below. "Apply" / "Easy Apply": click it, answer every question from the facts, attach {cv_file} if asked,
+   and stop before the final submit button.
+
+""" + EXTERNAL,
     "bayt": """Bayt:
 a. If it asks to log in or register: stop with status "needs_you" (log in to Bayt in Edge).
 b. If it says "Applied" or the job is closed: status "skipped".
@@ -115,6 +131,10 @@ def recipe_key(url, html=None):
         return "wuzzuf"
     if "bayt.com" in url:
         return "bayt"
+    if "naukrigulf.com" in url:
+        return "naukrigulf"
+    if "gulftalent.com" in url:
+        return "gulftalent"
     if "indeed.com" in url:
         return "indeed"
     return "external_direct"

@@ -1,4 +1,4 @@
-"""Job-alert emails in Gmail (IMAP, read-only): Wuzzuf + LinkedIn.
+"""Job-alert emails in Gmail (IMAP, read-only): Wuzzuf, LinkedIn, NaukriGulf, GulfTalent.
 
 Wuzzuf blocks scripts (Cloudflare), but its alert emails reach your inbox, so we read those.
 Needs GMAIL_ADDRESS + GMAIL_APP_PASSWORD (a Gmail App Password, not your real password).
@@ -14,7 +14,7 @@ import imaplib
 import os
 import re
 import urllib.parse
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from email.utils import parsedate_to_datetime
 
 from . import make_job
@@ -83,20 +83,85 @@ def parse_linkedin(text, received):
     return jobs
 
 
+def _cells(inner_html):
+    """The text pieces of one job card (each <td>/<p> its own piece)."""
+    return [" ".join(html.unescape(t).split()) for t in re.split(r"<[^>]+>", inner_html)
+            if " ".join(html.unescape(t).split())]
+
+
+def _anchors(page):
+    """(real href, card html) for every link. Nested links end a card early: that card is skipped."""
+    return [(html.unescape(m[1]), m[2]) for m in re.finditer(r'(?is)<a\b[^>]*?href="([^"]+)"[^>]*>(.*?)</a>', page)]
+
+
+NG_URL = re.compile(r"https://www\.naukrigulf\.com/[a-z0-9-]+-jid-\d+")
+NG_AGE = re.compile(r"^(\d+)([hd])$")
+
+
+def _ng_posted(cell, received):
+    """'2d' / '5h' / '1 Nov' / 'Today' -> datetime."""
+    m = NG_AGE.match(cell)
+    if m:
+        return received - timedelta(days=int(m[1]) if m[2] == "d" else int(m[1]) / 24)
+    try:
+        day = datetime.strptime(f"{cell} {received.year}", "%d %b %Y").replace(tzinfo=received.tzinfo)
+        return day if day <= received else day.replace(year=received.year - 1)
+    except ValueError:
+        return received
+
+
+def parse_naukrigulf(page, received):
+    """HTML: each job is one link around Title / Company / 'X - Y Years' / 'City - Country' / [Easy Apply] / age.
+    The link is a tracking + AUTO-LOGIN redirect: only the job page URL inside it is kept."""
+    jobs = []
+    for href, inner in _anchors(page):
+        real = NG_URL.search(urllib.parse.unquote(urllib.parse.unquote(href)))
+        cells = _cells(inner)
+        years = next((i for i, c in enumerate(cells) if re.search(r"\d+\s*-\s*\d+\s+Years?", c)), None)
+        if not real or years is None or years < 2 or years + 1 >= len(cells):
+            continue
+        location = ", ".join(p.strip() for p in cells[years + 1].replace(" , ", "; ").split(" - "))
+        jobs.append(make_job(cells[0], cells[1], location, real[0], _ng_posted(cells[-1], received), "naukrigulf"))
+    return jobs
+
+
+GT_URL = re.compile(r"https://www\.gulftalent\.com/[a-z-]+/jobs/[a-z0-9-]+-\d+")
+
+
+def parse_gulftalent(page, received):
+    """HTML: each job is one link around Title / Company / Location / 'N days ago' / [Easy Apply].
+    The link carries a login token (jwt=...): only the bare job URL is kept."""
+    jobs = []
+    for href, inner in _anchors(page):
+        real = GT_URL.match(href)
+        cells = _cells(inner)
+        age = next((i for i, c in enumerate(cells) if AGO.search(c)), None)
+        if real and age is not None and age >= 3:
+            jobs.append(make_job(cells[0], cells[1], cells[2], real[0], _posted(cells[age], received), "gulftalent"))
+    return jobs
+
+
+HTML_PARSERS = {  # these read the email's HTML itself (their cards have no line breaks once flattened)
+    "naukrigulf.com": parse_naukrigulf,
+    "jobs@gulftalent.com": parse_gulftalent,
+}
+
 PARSERS = {  # IMAP "FROM" search text -> parser
     "wuzzuf.net": parse_wuzzuf,
     "jobalerts-noreply@linkedin.com": parse_linkedin,
+    **HTML_PARSERS,
 }
 
 
-def message_texts(msg):
-    """Every text version of the email (plain, and HTML turned into lines)."""
+def message_texts(msg, raw_html=False):
+    """Every text version of the email (plain, and HTML turned into lines); raw_html: only the HTML parts, as is."""
     texts = []
     for part in msg.walk():
         kind = part.get_content_type()
-        if kind in ("text/plain", "text/html"):
-            body = part.get_content()
-            texts.append(html_to_text(body) if kind == "text/html" else body)
+        if kind == "text/html":
+            texts.append(part.get_content() if raw_html else html_to_text(part.get_content()))
+        elif kind == "text/plain" and not raw_html:
+            texts.append(part.get_content())
     return texts
 
 
@@ -117,7 +182,7 @@ def fetch(section, cfg):
                 _, data = imap.fetch(num, "(BODY.PEEK[])")
                 msg = email.message_from_bytes(data[0][1], policy=email.policy.default)
                 received = parsedate_to_datetime(msg["Date"])
-                for text in message_texts(msg):  # plain + html both parsed; same job kept once
+                for text in message_texts(msg, raw_html=sender in HTML_PARSERS):  # same job kept once
                     for job in parse(text, received):
                         jobs.setdefault(job["url"], job)
     return list(jobs.values())

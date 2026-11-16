@@ -249,8 +249,9 @@ channels = ["the_developer_guide", "cs_internships", "remotejobss"]
 must_have = ["hiring", "job", "jobs", "position", "vacancy", "apply", "opportunity", "internship",
              "وظيفة", "وظائف", "مطلوب", "فرصة عمل", "تدريب", "للتقديم"]
 
-[email_alerts]  # backup: Wuzzuf + LinkedIn alert emails from Gmail. Needs GMAIL_ADDRESS + GMAIL_APP_PASSWORD.
-senders = ["wuzzuf.net", "jobalerts-noreply@linkedin.com"]
+[email_alerts]  # Wuzzuf, LinkedIn, NaukriGulf, GulfTalent alert emails from Gmail. Needs GMAIL_ADDRESS + GMAIL_APP_PASSWORD.
+# NaukriGulf blocks scripts and GulfTalent loads its jobs by a private API, so their daily emails are the way in.
+senders = ["wuzzuf.net", "jobalerts-noreply@linkedin.com", "naukrigulf.com", "jobs@gulftalent.com"]
 days_back = 2     # read emails from the last N days (re-reading is harmless: seen jobs are skipped)
 hours_old = 168   # Wuzzuf weekly emails list jobs up to ~6 days old
 folder = "INBOX"

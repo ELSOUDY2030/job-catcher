@@ -65,7 +65,8 @@ EDGE_PROFILE = Path(os.environ.get("LOCALAPPDATA", "")) / "JobCatcher" / "EdgePr
 CDP_PORT = 9341  # not 9222: Lenovo Vantage's WebView2 listens there
 LOGIN_SITES = ["https://www.linkedin.com/login", "https://secure.indeed.com/auth", "https://wuzzuf.net/login",
                "https://www.bayt.com/en/login/",
-               "https://accounts.google.com/"]  # for "Sign in with Google" on Workday / SuccessFactors / Ashby...
+               "https://accounts.google.com/", "https://www.naukrigulf.com/jobseeker/login",
+               "https://www.gulftalent.com/login"]  # for "Sign in with Google" on Workday / SuccessFactors / Ashby...
 # the scheduled task runs pythonw (no console): without this every claude/agy/git call opens a black window
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 KEEP_DAYS = 30
@@ -772,7 +773,7 @@ def finish(rec, status, note, env, rdir, answers=None, shot=None, review_note=""
 SKILL = CV_DIR / ".agents" / "skills" / "job-hunter" / "SKILL.md"
 CV_MENU = CV_DIR / "cv_menu.md"
 CHANNEL = {"easy_apply": "LinkedIn Easy Apply", "external": "LinkedIn -> company site", "no_button": "LinkedIn",
-           "wuzzuf": "Wuzzuf", "bayt": "Bayt", "indeed": "Indeed", "external_direct": "company site"}
+           "wuzzuf": "Wuzzuf", "bayt": "Bayt", "naukrigulf": "NaukriGulf", "gulftalent": "GulfTalent", "indeed": "Indeed", "external_direct": "company site"}
 LOG_SECTION = "## Job Catcher (automatic)"
 SCREEN_STEP = "2. Screen the job with the \"Screen\" rules below. If it isn't a fit: status \"skipped\" with the reason."
 
@@ -1078,7 +1079,7 @@ def live(every=30):
 if __name__ == "__main__":
     if "--login" in sys.argv:  # once: sign in to the job sites in the job Edge (it keeps the logins)
         ensure_edge(LOGIN_SITES)
-        print("Sign in on each tab of the new Edge window (LinkedIn, Indeed, Wuzzuf, Bayt, Google). Keep it open.")
+        print("Sign in on each tab of the new Edge window (LinkedIn, Indeed, Wuzzuf, Bayt, Google, NaukriGulf, GulfTalent). Keep it open.")
         sys.exit()
     if "--questions" in sys.argv:  # every question that stopped a job -> receipts/questions_to_answer.md
         print(f"{write_questions()} questions -> {QUESTIONS_FILE}")
