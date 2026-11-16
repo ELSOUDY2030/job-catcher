@@ -160,6 +160,17 @@ def make_record(key, job, score, now, auto_min_score=None, egypt_any_score=False
     return rec
 
 
+def number_jobs(seen, state):
+    """A short number per job (#1, #2, ...), once, oldest first: you write "قدم 111" on Telegram instead of a link.
+    Weak jobs ("low") get none."""
+    n = state.get("next_n", 1)
+    for rec in sorted((r for r in seen.values() if r.get("status") != "low" and "n" not in r and r.get("id")),
+                      key=lambda r: r.get("first_seen", "")):
+        rec["n"] = n
+        n += 1
+    state["next_n"] = n
+
+
 def apply_pc_results(seen, pc, now=None):
     """Your PC reports what happened to queued jobs (applied / needs_you / blocked / skipped).
 
@@ -266,6 +277,7 @@ def main():
             seen[key] = record
             time.sleep(1.1)  # Telegram allows ~1 message/second per chat
 
+    number_jobs(seen, state)
     if summary_mode:
         minutes = cfg.get("telegram", {}).get("summary_minutes", 60)
         since = state.get("summary_from") or (now - timedelta(minutes=minutes)).isoformat(timespec="minutes")

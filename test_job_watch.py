@@ -419,28 +419,6 @@ assert pc_runner.parse_reply("تمام", 2) == {}
 assert pc_runner.parse_reply("2: 4 years\n1- relocation", 2) == {2: "4 years", 1: "relocation"}
 assert pc_runner.parse_reply("Growth", 1) == {1: "Growth"} and pc_runner.parse_reply("Growth", 2) is None
 assert pc_runner.parse_reply("9: x", 2) is None  # no question 9
-sent, inbox = [], []
-def fake_call(token, method, **kw):
-    sent.append(method)
-    if method == "sendMessage":
-        return {"message_id": 7}
-    return inbox.pop(0) if method == "getUpdates" and inbox else []
-pc_runner.telegram_bot.call, real_call = fake_call, pc_runner.telegram_bot.call
-pc_runner.time.sleep, real_sleep = (lambda s: None), pc_runner.time.sleep
-pc_runner.log, real_log = (lambda m: None), pc_runner.log  # keep receipts/runner.log clean
-env_t = {"token": "t", "chat_id": 5}
-qs = [{"q": "Why us?", "suggested": "RAG work"}, {"q": "Years of Python?", "suggested": "5"}]
-rec_t = {"id": "j1", "title": "AI", "company": "C", "url": "u"}
-inbox[:] = [[{"update_id": 3}], [{"update_id": 4, "message": {"chat": {"id": 5}, "text": "2: 4"}}]]
-assert pc_runner.ask_user(rec_t, qs, env_t, 1) == {"Why us?": "RAG work", "Years of Python?": "4"}
-inbox[:] = [[], [{"update_id": 9, "callback_query": {"id": "q", "data": "n:j1", "message": {"chat": {"id": 5}}}}]]
-assert pc_runner.ask_user(rec_t, qs, env_t, 1) == "skip"
-inbox[:] = [[], [{"update_id": 9, "callback_query": {"id": "q", "data": "k:other", "message": {"chat": {"id": 5}}}},
-                 {"update_id": 10, "callback_query": {"id": "q", "data": "k:j1", "message": {"chat": {"id": 5}}}}]]
-assert pc_runner.ask_user(rec_t, qs, env_t, 1) == {"Why us?": "RAG work", "Years of Python?": "5"}
-assert pc_runner.ask_user(rec_t, qs, {}, 1) is None  # no Telegram on this PC: needs_you as before
-pc_runner.telegram_bot.call, pc_runner.time.sleep, pc_runner.log = real_call, real_sleep, real_log
-
 assert pc_runner.SCREEN_STEP in pc_runner.BRIEF  # write_brief drops it after Sonnet's screen: must match the template
 with _tf.TemporaryDirectory() as d:  # switch_model: 3 "No capacity" lines in one run -> the next model
     f = _P(d) / "x.log"
@@ -464,25 +442,69 @@ assert make_record(job_key(cai), cai, 2, now2, 6, egypt_any_score=True)["auto"]
 assert not make_record(job_key(cai), cai, 2, now2, 6)["auto"]
 assert not make_record(job_key(hi), {**cai, "location": "Berlin"}, 5, now2, 6, egypt_any_score=True)["auto"]
 
-# a late ✅ on a question message: answers remembered, the job is re-applied next run
+# Telegram chat by job number
 import tempfile as _tf
 import json
+import threading as _th
 from pathlib import Path as _P
+from job_watch import number_jobs
+_s = {}
+_seen = {"a": {"id": "a1", "first_seen": "2"}, "b": {"id": "b1", "first_seen": "1"}, "c": {"id": "c1", "status": "low"}}
+number_jobs(_seen, _s)
+assert (_seen["b"]["n"], _seen["a"]["n"], "n" in _seen["c"], _s["next_n"]) == (1, 2, False, 3)
+number_jobs(_seen, _s)
+assert _s["next_n"] == 3  # numbered once
+
+pc = pc_runner
+assert pc.parse_command("قدم 111") == ("apply", "111", "")
+assert pc.parse_command("قدّم #111") == ("apply", "111", "")
+assert pc.parse_command("اعتمد 111") == ("ok", "111", "")
+assert pc.parse_command("اعتمد") == ("ok", None, "")
+assert pc.parse_command("111 2: 4 years") == ("edit", "111", "2: 4 years")
+assert pc.parse_command("2: 4 years") == ("edit", None, "2: 4 years")
+assert pc.parse_command("111") == ("status", "111", "")
+assert pc.parse_command("سيب 111") == ("skip", "111", "")
+assert pc.parse_command("افتح FlairsTech") == ("open", "FlairsTech", "")
+assert pc.parse_command("ازيك")[0] == "help"
+
 _d = _P(_tf.mkdtemp())
-saved = (pc_runner.PENDING, pc_runner.REQUEUE, pc_runner.MY_ANSWERS, pc_runner.log)
-pc_runner.PENDING, pc_runner.REQUEUE, pc_runner.MY_ANSWERS = _d / "p.json", _d / "r.json", _d / "a.json"
-pc_runner.log = lambda m: None
-pc_runner.PENDING.write_text(json.dumps({"j1": {"msg": 7, "open": [{"q": "Years of fine tuning?", "suggested": "2"}]},
-                                         "j2": {"msg": 8, "open": [{"q": "Travel %?", "suggested": "10"}]}}))
-pc_runner.telegram_bot.call, real_call = (lambda *a, **k: {}), pc_runner.telegram_bot.call
-pc_runner.late_answers([{"update_id": 1, "callback_query": {"id": "c", "data": "k:j1", "message": {"chat": {"id": 5}, "message_id": 7}}},
-                        {"update_id": 2, "message": {"chat": {"id": 5}, "text": "25", "reply_to_message": {"message_id": 8}}}],
-                       {"token": "t", "chat_id": 5})
-assert json.loads(pc_runner.REQUEUE.read_text()) == {"j1": "apply", "j2": "apply"}
-assert json.loads(pc_runner.MY_ANSWERS.read_text()) == {"Years of fine tuning?": "2", "Travel %?": "25"}
-assert json.loads(pc_runner.PENDING.read_text()) == {}
-pc_runner.telegram_bot.call = real_call
-pc_runner.PENDING, pc_runner.REQUEUE, pc_runner.MY_ANSWERS, pc_runner.log = saved
+saved = (pc.PENDING, pc.REQUEUE, pc.MY_ANSWERS, pc.RECEIPTS, pc.log)
+pc.PENDING, pc.REQUEUE, pc.MY_ANSWERS, pc.RECEIPTS = _d / "p.json", _d / "r.json", _d / "a.json", _d
+pc.log = lambda m: None
+pc.JOBS.clear()
+for r in ({"id": "j1", "n": 111, "title": "AI", "company": "FlairsTech", "url": "u1"},
+          {"id": "j2", "n": 112, "title": "ML", "company": "Acme", "url": "u2"}):
+    pc.JOBS[str(r["n"])] = pc.JOBS[r["id"]] = r
+pc.PENDING.write_text(json.dumps({"j1": {"msg": 7, "open": [{"q": "Years of fine tuning?", "suggested": "2"}]}}))
+assert "مافيش أسئلة" in pc.handle("ok", "112", "")                 # nothing asked: just apply
+assert "اتحفظت" in pc.handle("edit", None, "1: 3")                 # the only pending job: no number needed
+assert json.loads(pc.REQUEUE.read_text()) == {"j2": "apply", "j1": "apply"}
+assert json.loads(pc.MY_ANSWERS.read_text()) == {"Years of fine tuning?": "3"}
+assert pc.handle("status", "999", "").startswith("مالقيتش")
+assert "اتسابت" in pc.handle("skip", "flairs", "")                 # by company name
+assert json.loads(pc.REQUEUE.read_text())["j1"] == "skip"
+
+# a job waiting right now: the inbox hands the answer to ask_user
+calls = []
+def fake_call(token, method, **kw):
+    calls.append(method)
+    return {"message_id": 9} if method == "sendMessage" else []
+pc.telegram_bot.call, real_call = fake_call, pc.telegram_bot.call
+pc.INBOX["thread"] = "test"  # don't start the real thread
+env_t = {"token": "t", "chat_id": 5}
+qs = [{"q": "Why us?", "suggested": "RAG work"}, {"q": "Years of Python?", "suggested": "5"}]
+_th.Timer(0.3, lambda: pc.on_update({"update_id": 1, "message": {"chat": {"id": 5}, "text": "111 2: 4"}}, env_t)).start()
+assert pc.ask_user(pc.JOBS["j1"], qs, env_t, 1) == {"Why us?": "RAG work", "Years of Python?": "4"}
+_th.Timer(0.3, lambda: pc.on_update({"update_id": 2, "callback_query": {"id": "q", "data": "n:j1",
+                                     "message": {"chat": {"id": 5}, "message_id": 9}}}, env_t)).start()
+assert pc.ask_user(pc.JOBS["j1"], qs, env_t, 1) == "skip"
+assert pc.ask_user(pc.JOBS["j1"], qs, {}, 1) is None  # no Telegram on this PC: needs_you as before
+pc.on_update({"update_id": 3, "message": {"chat": {"id": 999}, "text": "قدم 111"}}, env_t)  # another chat: ignored
+assert calls.count("sendMessage") == 3  # the 2 question messages + the reply to "111 2: 4"
+pc.telegram_bot.call = real_call
+pc.INBOX.clear()
+pc.JOBS.clear()
+pc.PENDING, pc.REQUEUE, pc.MY_ANSWERS, pc.RECEIPTS, pc.log = saved
 
 # a re-applied job's new result lands once; the same result next run changes nothing
 r_ = {"k": {"id": "z1", "status": "needs_you", "done_at": "2026-11-16T10:00"}}

@@ -103,7 +103,7 @@ def _cairo(iso):
 
 
 def _link(r):
-    return f"<a href=\"{html.escape(r.get('url', ''))}\">{html.escape(r.get('title', ''))}</a> · {html.escape(r.get('company', ''))}"
+    return (f"#{r['n']} " if r.get("n") else "") + f"<a href=\"{html.escape(r.get('url', ''))}\">{html.escape(r.get('title', ''))}</a> · {html.escape(r.get('company', ''))}"
 
 
 def summary(seen, since, now, cfg, pc=None, top=5, max_list=12):
@@ -150,7 +150,7 @@ def summary(seen, since, now, cfg, pc=None, top=5, max_list=12):
         lines += [f"⚠️ {html.escape(warning)}"]
     if len(lines) == 2 and not found:
         lines = [lines[0], "مفيش جديد الساعة دي. البوت شغال ✔"]
-    markup = {"inline_keyboard": [[{"text": f"🚀 {i}", "callback_data": f"Q:{r['id']}"}
+    markup = {"inline_keyboard": [[{"text": f"🚀 #{r['n']}" if r.get("n") else f"🚀 {i}", "callback_data": f"Q:{r['id']}"}
                                    for i, r in enumerate(best[:top], 1)]]} if best else None
     return "\n".join(lines)[:4000], markup
 

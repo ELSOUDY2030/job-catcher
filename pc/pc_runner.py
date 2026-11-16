@@ -22,6 +22,7 @@ import socket
 import subprocess
 import sys
 import tarfile
+import threading
 import tempfile
 import time
 import tomllib
@@ -182,134 +183,217 @@ def parse_reply(text, n):
     return {1: text} if n == 1 else None
 
 
+def tag(rec):
+    return f"#{rec['n']}" if rec.get("n") else rec["id"]
+
+
 def ask_user(rec, open_qs, env, minutes):
-    """Send the open questions with suggested answers; wait for ✅ / ⏭ / a text reply.
-    -> {question: answer}, "skip", or None (no Telegram on this PC, or no reply in time)."""
+    """Send the open questions with suggested answers; the inbox thread hands back ✅ / ⏭ / your text.
+    -> {question: answer}, "skip", or None (no Telegram on this PC, or no reply in time: kept in PENDING,
+    so a later "اعتمد <n>" or ✅ still re-applies it)."""
     if not (env.get("token") and env.get("chat_id")) or not open_qs:
         return None
-    chat = str(env["chat_id"])
-
-    def tg(method, **kw):
-        return telegram_bot.call(env["token"], method, **kw)
-
-    # ponytail: no offset = never confirms updates, so GitHub's run still gets every 🚀 press; ids seen before
-    # the question are ignored. Ceiling: 100 unconfirmed updates (GitHub confirms them every run).
-    def poll():
-        return tg("getUpdates", timeout=0, allowed_updates=["callback_query", "message"])
-
-    last = max((u["update_id"] for u in poll()), default=0)
-    lines = [f"❓ <b>{html.escape(rec['title'])}</b> · {html.escape(rec['company'])}", rec["url"], ""]
+    start_inbox(env)
+    lines = [f"❓ {tag(rec)} <b>{html.escape(rec['title'])}</b> · {html.escape(rec['company'])}", rec["url"], ""]
     for i, x in enumerate(open_qs, 1):
         opts = f"\n   ({' / '.join(map(str, x['options']))})" if x.get("options") else ""
         lines.append(f"{i}. {html.escape(str(x.get('q', '')) + opts)}\n   💡 {html.escape(str(x.get('suggested', '')))}")
-    lines.append('\nموافق على الإجابات المقترحة؟ دوس ✅. عايز تغيّر واحدة: ابعت "2: إجابتك" (والباقي يفضل المقترح).')
-    keys = {f"k:{rec['id']}", f"n:{rec['id']}"}
-    sent = tg("sendMessage", chat_id=env["chat_id"], text="\n".join(lines)[:4000], parse_mode="HTML",
-              disable_web_page_preview=True,
-              reply_markup={"inline_keyboard": [[{"text": "✅ قدّم بالإجابات دي", "callback_data": f"k:{rec['id']}"},
-                                                 {"text": "⏭ سيبها", "callback_data": f"n:{rec['id']}"}]]})
+    t = tag(rec).lstrip("#")
+    lines.append(f'\nموافق؟ دوس ✅ أو اكتب "اعتمد {t}". تغيّر إجابة: "{t} 2: إجابتك". مش عايزها: "سيب {t}".')
+    sent = telegram_bot.call(env["token"], "sendMessage", chat_id=env["chat_id"], text="\n".join(lines)[:4000],
+                             parse_mode="HTML", disable_web_page_preview=True,
+                             reply_markup={"inline_keyboard": [[
+                                 {"text": "✅ قدّم بالإجابات دي", "callback_data": f"k:{rec['id']}"},
+                                 {"text": "⏭ سيبها", "callback_data": f"n:{rec['id']}"}]]})
     log(f"[i] asked you on Telegram ({len(open_qs)} questions), waiting up to {minutes} min")
-    answer = {str(x.get("q", "")): str(x.get("suggested", "")) for x in open_qs}
-
-    def done(label):
-        try:
-            tg("editMessageReplyMarkup", chat_id=env["chat_id"], message_id=sent["message_id"],
-               reply_markup={"inline_keyboard": [[{"text": label, "callback_data": "-"}]]})
-        except Exception as e:
-            log(f"[!] telegram: {e}")
-
+    with LOCK:
+        WAITING[rec["id"]] = {"open": open_qs, "msg": sent["message_id"], "result": None}
     end = time.time() + minutes * 60
-    while time.time() < end:
-        time.sleep(5)
-        try:
-            updates = [u for u in poll() if u["update_id"] > last]
-        except Exception as e:  # a network blip, or GitHub's getUpdates at the same moment (409): try again
-            log(f"[!] telegram poll: {e}")
-            continue
-        for u in updates:
-            last = max(last, u["update_id"])
-            q, m = u.get("callback_query"), u.get("message")
-            if q and str(q["message"]["chat"]["id"]) == chat and q.get("data") in keys:
-                tg("answerCallbackQuery", callback_query_id=q["id"])
-                if q["data"].startswith("n:"):
-                    done("⏭ اتسابت")
-                    return "skip"
-                done("✅ بيقدّم")
-                return answer
-            if m and str(m["chat"]["id"]) == chat and m.get("text"):
-                got = parse_reply(m["text"], len(open_qs))
-                if got is None:
-                    tg("sendMessage", chat_id=env["chat_id"], text='اكتب رقم السؤال: "2: إجابتك"')
-                    continue
-                for i, a in got.items():
-                    answer[str(open_qs[i - 1].get("q", ""))] = a
-                done("✅ بيقدّم بإجاباتك")
-                return answer
-    # buttons stay: a late ✅ / ⏭ / reply is read at the start of a later run (late_answers) and re-applies
-    pending = read_json(PENDING) or {}
-    pending[rec["id"]] = {"msg": sent["message_id"], "open": open_qs}
-    PENDING.write_text(json.dumps(pending, ensure_ascii=False), encoding="utf-8")
-    return None
+    while time.time() < end and WAITING[rec["id"]]["result"] is None:
+        time.sleep(2)
+    with LOCK:
+        ask = WAITING.pop(rec["id"])
+        if ask["result"] is None:
+            pending = read_json(PENDING) or {}
+            pending[rec["id"]] = {"msg": ask["msg"], "open": open_qs}
+            PENDING.write_text(json.dumps(pending, ensure_ascii=False), encoding="utf-8")
+    return ask["result"]
 
 
 def asked_before(job_id):
-    """Open questions of a job asked before pending_asks.json existed: from its newest agy receipt."""
+    """Open questions of a job whose wait ended before pending_asks.json existed: from its newest agy receipt."""
     rdir = RECEIPTS / job_id
     runs = (sorted(rdir.glob("answer*.json"), reverse=True) + [rdir / "fill.json"]) if rdir.exists() else []
     old = next((r for r in (reply_json(read_json(f) or {}, "status") for f in runs) if r), None) or {}
     return old.get("open") or [] if old.get("status") == "ask" else []
 
 
-def job_in_text(text):
-    """The job whose link is in a question message's text (index.jsonl, newest first)."""
-    rows = [json.loads(x) for x in (RECEIPTS / "index.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()] \
-        if (RECEIPTS / "index.jsonl").exists() else []
-    return next((r["id"] for r in reversed(rows) if r.get("url") and r["url"] in text), None)
+# ---------- Telegram chat: "قدم 111", "اعتمد 111", "111 2: answer", "سيب 111", "افتح 111", "111" ----------
+WAITING = {}       # job id -> {"open", "msg", "result"}: ask_user is waiting on it right now
+JOBS = {}          # "111" -> record (from the last load_seen) + every record by id
+LOCK = threading.RLock()
+INBOX = {}         # the running inbox thread (one per process)
+VERBS = [("apply", r"قد[ّ]?م|قدملي|apply"), ("ok", r"اعتمد|موافق|ok|approve"), ("skip", r"سيب(?:ها)?|skip"),
+         ("open", r"افتح|open"), ("status", r"حالة|ايه|إيه|status")]
+HELP = ("الأوامر (الرقم هو #رقم الوظيفة في الملخص):\n"
+        "• قدم 111: يقدّم عليها في الدورة الجاية\n• اعتمد 111: يقدّم بالإجابات المقترحة\n"
+        "• 111 2: إجابتك: يغيّر إجابة السؤال 2 ويقدّم\n• سيب 111: يسيبها\n• افتح 111: يفتحها في Edge\n"
+        "• 111: حالتها وأسئلتها")
 
 
-def late_answers(updates, env):
-    """✅ / ⏭ / a reply to a question message after its wait ended -> REQUEUE (+ your answers remembered).
-    Old messages (buttons already gone) work too: reply to them; the job is found by its link."""
-    pending, requeue = read_json(PENDING) or {}, read_json(REQUEUE) or {}
-    by_msg = {v["msg"]: k for k, v in pending.items()}
-    for u in updates:
-        q, m = u.get("callback_query"), u.get("message") or {}
-        reply_to = m.get("reply_to_message") or {}
-        if q and str(q["message"]["chat"]["id"]) == str(env["chat_id"]):
-            action, _, job_id = (q.get("data") or "").partition(":")
-            if action not in ("k", "n"):
-                continue
-            msg = q["message"].get("message_id")
-        elif str(m.get("chat", {}).get("id")) == str(env["chat_id"]) and reply_to:
-            job_id = by_msg.get(reply_to.get("message_id")) or job_in_text(reply_to.get("text") or "")
-            action, msg = "text", reply_to.get("message_id")
-        else:
-            continue
-        if not job_id or job_id in requeue:
-            continue
-        ask = pending.pop(job_id, None) or {"msg": msg, "open": asked_before(job_id)}
-        if not ask["open"]:
-            continue
-        got = {} if action == "k" else "skip" if action == "n" else parse_reply(m.get("text") or "", len(ask["open"]))
-        if got is None:
-            pending[job_id] = ask
-            continue
-        if got != "skip":
-            answer = {str(x.get("q", "")): str(x.get("suggested", "")) for x in ask["open"]}
-            answer.update({str(ask["open"][i - 1].get("q", "")): a for i, a in got.items()})
-            remember(answer)
-        requeue[job_id] = "skip" if got == "skip" else "apply"
-        label = "⏭ اتسابت" if got == "skip" else "✅ هيقدّم في الدورة الجاية"
+def parse_command(text):
+    """Your message -> (verb, job ref or None, rest). No network."""
+    t = text.strip()
+    for verb, words in VERBS:
+        m = re.match(rf"^(?:{words})(?:\s+#?(.+?))?\s*$", t, re.I | re.S)
+        if m:
+            return verb, (m[1] or "").strip() or None, ""
+    m = re.match(r"^#?(\d+)\s+(\d+\s*[:\-.)]\s*.+)$", t, re.S)
+    if m:
+        return "edit", m[1], m[2].strip()
+    m = re.match(r"^#?(\d+)$", t)
+    if m:
+        return "status", m[1], ""
+    if re.match(r"^\d+\s*[:\-.)]\s*\S", t):
+        return "edit", None, t
+    return "help", None, t
+
+
+def find_job(ref, reply_to=""):
+    """'111' / a job id / a company name / None (the one job waiting for you) -> record or an error line."""
+    with LOCK:
+        waiting = list(WAITING) + list(read_json(PENDING) or {})
+    if ref is None:
+        hit = re.search(r"#(\d+)", reply_to or "")
+        ref = hit[1] if hit else None
+    if ref is None:
+        if len(waiting) == 1:
+            return JOBS.get(waiting[0]) or {"id": waiting[0], "title": waiting[0], "company": "", "url": ""}
+        return "مستني إجاباتك على أكتر من وظيفة: اكتب رقمها، مثلاً \"اعتمد 111\"." if waiting else HELP
+    rec = JOBS.get(ref.lstrip("#"))
+    if rec:
+        return rec
+    hits = [r for r in JOBS.values() if r.get("n") and ref.lower() in f"{r.get('company', '')} {r.get('title', '')}".lower()]
+    if len({r["id"] for r in hits}) == 1:
+        return hits[0]
+    return f"مالقيتش وظيفة #{ref}." if not hits else f"فيه أكتر من وظيفة لـ «{ref}»: " + ", ".join(
+        sorted({tag(r) for r in hits})[:8])
+
+
+def queue_again(job_id, what):
+    with LOCK:
+        q = read_json(REQUEUE) or {}
+        q[job_id] = what
+        REQUEUE.write_text(json.dumps(q), encoding="utf-8")
+
+
+def handle(verb, ref, rest, reply_to=""):
+    """One command -> the line the bot answers. Acts through WAITING (a job waiting now) or REQUEUE (next run)."""
+    if verb == "help":
+        return HELP
+    rec = find_job(ref, reply_to)
+    if isinstance(rec, str):
+        return rec
+    jid, name = rec["id"], f"{tag(rec)} {rec.get('title', '')} · {rec.get('company', '')}"
+    with LOCK:
+        pending = read_json(PENDING) or {}
+        ask = WAITING.get(jid) or pending.get(jid) or ({"open": asked_before(jid)} if verb in ("ok", "edit") else None)
+    if verb == "status":
+        row = next((r for r in reversed(index_rows()) if r["id"] == jid), {})
+        st = row.get("status") or rec.get("status", "")
+        lines = [f"{name}\n{rec.get('url', '')}\nالحالة: {st} {row.get('note', '')}"[:900]]
+        lines += [f"{i}. {x.get('q')}\n   💡 {x.get('suggested')}" for i, x in enumerate((ask or {}).get("open") or [], 1)]
+        return "\n".join(lines)
+    if verb == "open":
+        return reopen(jid)
+    if verb == "skip":
+        with LOCK:
+            if jid in WAITING:
+                WAITING[jid]["result"] = "skip"
+            else:
+                pending.pop(jid, None)
+                PENDING.write_text(json.dumps(pending, ensure_ascii=False), encoding="utf-8")
+                queue_again(jid, "skip")
+        return f"⏭ {name}: اتسابت."
+    if verb == "apply" and not (ask and ask.get("open")):
+        if rec.get("status") == "applied":
+            return f"{name}: اتقدّم عليها قبل كده ✅"
+        queue_again(jid, "apply")
+        return f"🚀 {name}: هيقدّم عليها في الدورة الجاية."
+    if not (ask and ask.get("open")):  # ok / edit with nothing asked
+        queue_again(jid, "apply")
+        return f"🚀 {name}: مافيش أسئلة مستنياك فيها، فهيقدّم عليها في الدورة الجاية."
+    got = parse_reply(rest, len(ask["open"])) if verb == "edit" else {}
+    if got is None:
+        return f'اكتب رقم السؤال: "{tag(rec).lstrip("#")} 2: إجابتك"'
+    answer = {str(x.get("q", "")): str(x.get("suggested", "")) for x in ask["open"]}
+    answer.update({str(ask["open"][i - 1].get("q", "")): a for i, a in got.items()})
+    with LOCK:
+        if jid in WAITING:
+            WAITING[jid]["result"] = answer
+            return f"✅ {name}: بيكمّل التقديم بإجاباتك دلوقتي."
+        remember(answer)
+        pending.pop(jid, None)
+        PENDING.write_text(json.dumps(pending, ensure_ascii=False), encoding="utf-8")
+        queue_again(jid, "apply")
+    return f"✅ {name}: اتحفظت إجاباتك، وهيقدّم عليها في الدورة الجاية."
+
+
+def index_rows():
+    f = RECEIPTS / "index.jsonl"
+    return [json.loads(x) for x in f.read_text(encoding="utf-8").splitlines() if x.strip()] if f.exists() else []
+
+
+def on_update(u, env):
+    """One Telegram update from your chat -> handle() -> the bot's answer."""
+    q, m = u.get("callback_query"), u.get("message") or {}
+    chat = str(env["chat_id"])
+    if q and str(q.get("message", {}).get("chat", {}).get("id")) == chat:
+        action, _, jid = (q.get("data") or "").partition(":")
+        if action not in ("k", "n"):
+            return  # 🚀 and ✅/❌ buttons: GitHub's run handles them
+        JOBS.setdefault(jid, {"id": jid, "title": "", "company": "", "url": ""})
+        answer = handle("ok" if action == "k" else "skip", jid, "")
+        telegram_bot.call(env["token"], "answerCallbackQuery", callback_query_id=q["id"], text=answer[:190])
+        telegram_bot.call(env["token"], "editMessageReplyMarkup", chat_id=chat, message_id=q["message"]["message_id"],
+                          reply_markup={"inline_keyboard": [[{"text": answer[:60], "callback_data": "-"}]]})
+    elif str(m.get("chat", {}).get("id")) == chat and m.get("text"):
+        answer = handle(*parse_command(m["text"]), reply_to=(m.get("reply_to_message") or {}).get("text", ""))
+        telegram_bot.call(env["token"], "sendMessage", chat_id=chat, text=answer[:4000], disable_web_page_preview=True)
+    else:
+        return
+    log(f"[i] telegram: {answer.splitlines()[0][:150]}")
+
+
+def inbox(env, stop, every=3):
+    """Reads your chat every few seconds while the runner is up. ponytail: getUpdates without offset never
+    confirms anything, so GitHub's run still gets every 🚀 press; ceiling: 100 unconfirmed updates."""
+    last_file = RECEIPTS / "tg_open_last.txt"
+    last = int(last_file.read_text() or 0) if last_file.exists() else None
+    while not stop.wait(every):
         try:
-            if q:
-                telegram_bot.call(env["token"], "answerCallbackQuery", callback_query_id=q["id"], text=label)
-            telegram_bot.call(env["token"], "editMessageReplyMarkup", chat_id=env["chat_id"], message_id=ask["msg"],
-                              reply_markup={"inline_keyboard": [[{"text": label, "callback_data": "-"}]]})
-        except Exception as e:  # an old press can't be answered any more: the requeue still counts
-            log(f"[!] telegram: {e}")
-        log(f"[i] late Telegram answer for {job_id}: {requeue[job_id]}")
-    PENDING.write_text(json.dumps(pending, ensure_ascii=False), encoding="utf-8")
-    REQUEUE.write_text(json.dumps(requeue), encoding="utf-8")
+            updates = telegram_bot.call(env["token"], "getUpdates", timeout=0,
+                                        allowed_updates=["callback_query", "message"])
+        except Exception:  # a network blip, or GitHub's getUpdates at the same moment (409)
+            continue
+        if last is None:  # first start: don't replay old messages
+            last = max((x["update_id"] for x in updates), default=0)
+        for u in updates:
+            if u["update_id"] > last:
+                last = u["update_id"]
+                try:
+                    on_update(u, env)
+                except Exception as e:
+                    log(f"[!] telegram command: {e}")
+        last_file.write_text(str(last))
+
+
+def start_inbox(env):
+    if INBOX or not (env.get("token") and env.get("chat_id")):
+        return
+    INBOX["stop"] = threading.Event()
+    INBOX["thread"] = threading.Thread(target=inbox, args=(env, INBOX["stop"]), daemon=True)
+    INBOX["thread"].start()
 
 
 def remember(answers):
@@ -429,30 +513,6 @@ def reopen(query):
     tab = cdp("new?" + (hit.get("stop_url") or hit["url"]), "PUT")
     USER_TABS.write_text(json.dumps(sorted(set(read_json(USER_TABS) or []) | {tab.get("id")})))
     return f"🔗 فتحتلك {hit['title']} · {hit['company']} في Edge بتاع الوظايف (مش هيتقفل لحد ما تقفله انت)."
-
-
-def telegram_opens(env):
-    """'افتح <company>' / 'open <company>' sent to the bot -> reopen(). Read at the start of each run, before the
-    GitHub run (which confirms the updates). ponytail: a message sent just before a scheduled GitHub run is missed."""
-    if not (env.get("token") and env.get("chat_id")):
-        return
-    seen_file = RECEIPTS / "tg_open_last.txt"
-    last = int(seen_file.read_text() or 0) if seen_file.exists() else 0
-    try:
-        updates = telegram_bot.call(env["token"], "getUpdates", timeout=0, allowed_updates=["callback_query", "message"])
-    except Exception as e:
-        log(f"[!] telegram (open requests): {e}")
-        return
-    late_answers([u for u in updates if u["update_id"] > last], env)
-    for u in updates:
-        m = u.get("message") or {}
-        hit = re.match(r"^\s*(?:افتح|open)\s+(.+)", m.get("text") or "", re.I)
-        if u["update_id"] > last and hit and str(m.get("chat", {}).get("id")) == str(env["chat_id"]):
-            answer = reopen(hit[1].strip())
-            log(f"[i] {answer}")
-            notify(env, html.escape(answer))
-    if updates:
-        seen_file.write_text(str(max(u["update_id"] for u in updates)))
 
 
 def ensure_mcp(wait=90):
@@ -829,7 +889,7 @@ def main():
     cfg = tomllib.loads((ROOT / "config.toml").read_text(encoding="utf-8"))
     env = read_json(ENV_FILE) or {}  # only needed for notify_each; the hourly summary comes from GitHub
     env["notify_each"] = cfg.get("apply", {}).get("notify_each", False)
-    telegram_opens(env)
+    start_inbox(env)  # your Telegram commands are answered while this runs
     global AGY_MODEL
     AGY_FALLBACK[:] = cfg.get("apply", {}).get("agy_fallback", AGY_FALLBACK)
     AGY_MODEL = review.AGY_MODEL = cfg.get("apply", {}).get("agy_model", AGY_MODEL)
@@ -856,14 +916,17 @@ def main():
         START_FILE.write_text(datetime.now(timezone.utc).isoformat(timespec="minutes"), encoding="utf-8")
     since = START_FILE.read_text(encoding="utf-8").strip() if queued is None else ""
     skip = words_regex(cfg.get("apply", {}).get("skip_titles"))
-    requeue = (read_json(REQUEUE) or {}) if queued is None else {}
+    with LOCK:
+        requeue = (read_json(REQUEUE) or {}) if queued is None else {}
+        REQUEUE.unlink(missing_ok=True)
+    JOBS.update({str(r["n"]): r for r in seen.values() if r.get("n")})
+    JOBS.update({r["id"]: r for r in seen.values() if r.get("id")})
     for job_id, what in requeue.items():
         results.pop(job_id, None)
         if what == "skip":
             pc["results"][job_id] = {"at": datetime.now(timezone.utc).isoformat(timespec="minutes"),
                                      "status": "skipped", "note": "انت قلت سيبها (Telegram)"}
     again = [{**r, "status": "queued"} for r in seen.values() if requeue.get(r["id"]) == "apply"]
-    REQUEUE.unlink(missing_ok=True)
     queue = []
     waiting = sorted((r for r in seen.values() if r.get("status") == "queued" and r["id"] not in results
                       and r["id"] not in requeue), key=lambda r: (region_rank(r), -r.get("score", 0)))
@@ -944,7 +1007,8 @@ def live(every=30):
                 log(f"[!] run failed: {e}")
             wait = max(0, start + every * 60 - time.time())
             log(f"[i] next run at {datetime.now() + timedelta(seconds=wait):%H:%M}  (Ctrl+C to stop)")
-            time.sleep(wait)
+            while time.time() < start + every * 60 and not (read_json(REQUEUE) or {}):
+                time.sleep(5)  # "قدم 111" on Telegram starts the next run now
     except KeyboardInterrupt:  # subprocess.run kills the running agy / claude on the way out
         log("[i] stopped (Ctrl+C)")
 
