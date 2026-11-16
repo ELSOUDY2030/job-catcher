@@ -160,6 +160,19 @@ def make_record(key, job, score, now, auto_min_score=None, egypt_any_score=False
     return rec
 
 
+def promote(seen, now, auto_min, egypt_any, days=3):
+    """Recent 👀 jobs that the CURRENT rules would auto-apply -> queued (rules changed on 16 Nov: 8 -> 6,
+    Egypt any score). Older ones stay: their posts are likely closed. -> how many."""
+    since = (now - timedelta(days=days)).isoformat(timespec="minutes")
+    n = 0
+    for rec in seen.values():
+        if rec.get("status") == "new" and rec.get("first_seen", "") >= since and auto_min is not None and (
+                rec.get("score", 0) >= auto_min or egypt_any and EGYPT.search(rec.get("location") or "")):
+            rec.update(status="queued", auto=True)
+            n += 1
+    return n
+
+
 def number_jobs(seen, state):
     """A short number per job (#1, #2, ...), once, oldest first: you write "قدم 111" on Telegram instead of a link.
     Weak jobs ("low") get none."""
@@ -182,9 +195,10 @@ def apply_pc_results(seen, pc, now=None):
     for job_id, result in (pc.get("results") or {}).items():
         rec = by_id.get(job_id)
         # "needs_you"/"blocked" too: a job re-applied after your late Telegram answer. A manual ✅/❌ always wins.
-        # (only a NEW result for those: the same one comes back every run and must not re-announce the job)
+        # (only a NEW result for those: the same one comes back every run and must not re-announce the job;
+        # "new": a 👀 job you sent with "قدم 111")
         if rec and (rec.get("status") == "queued"
-                    or rec.get("status") in ("needs_you", "blocked") and result.get("at") != rec.get("done_at")):
+                    or rec.get("status") in ("needs_you", "blocked", "new") and result.get("at") != rec.get("done_at")):
             rec.update(status=result["status"], done_at=result.get("at", ""), note=result.get("note", ""),
                        proof=result.get("proof", ""),
                        status_at=now.isoformat(timespec="minutes") if now else result.get("at", ""))
@@ -277,6 +291,9 @@ def main():
             seen[key] = record
             time.sleep(1.1)  # Telegram allows ~1 message/second per chat
 
+    promoted = promote(seen, now, auto_min, egypt_any)
+    if promoted:
+        print(f"[i] {promoted} earlier 👀 jobs now auto-applied (current [apply] rules)")
     number_jobs(seen, state)
     if summary_mode:
         minutes = cfg.get("telegram", {}).get("summary_minutes", 60)

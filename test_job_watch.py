@@ -512,5 +512,15 @@ assert apply_pc_results(r_, {"results": {"z1": {"status": "needs_you", "at": "20
 assert apply_pc_results(r_, {"results": {"z1": {"status": "applied", "at": "2026-11-16T12:00"}}}) == 1
 assert r_["k"]["status"] == "applied"
 
+# promote: recent 👀 jobs that today's rules would auto-apply
+from job_watch import promote
+_n = datetime(2026, 11, 16, 12, tzinfo=timezone.utc)
+_p = {"a": {"status": "new", "score": 6, "first_seen": "2026-11-15T10:00"},
+      "b": {"status": "new", "score": 4, "first_seen": "2026-11-15T10:00", "location": "Cairo, Egypt"},
+      "c": {"status": "new", "score": 4, "first_seen": "2026-11-15T10:00", "location": "Berlin"},
+      "d": {"status": "new", "score": 9, "first_seen": "2026-11-01T10:00"}}
+assert promote(_p, _n, 6, True) == 2 and _p["a"]["status"] == _p["b"]["status"] == "queued"
+assert _p["c"]["status"] == _p["d"]["status"] == "new"
+
 print("ok")
 

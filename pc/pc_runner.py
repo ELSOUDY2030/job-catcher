@@ -979,6 +979,9 @@ def main():
                 pc["results"][rec["id"]] = finish(rec, "needs_you", f"runner error: {e}", env, RECEIPTS / rec["id"])
             close_tabs()  # nothing left open between jobs (a stopped one: its stop_url reopens it)
             save_pc(pc)  # after every job: a crash never loses a result
+            if read_json(REQUEUE) and i + 1 < len(queue):  # "قدم 111" on Telegram: it goes next, not after this cycle
+                log("[i] you asked for a job on Telegram: it goes next (the rest of this cycle waits)")
+                break
 
 
 def single_instance():
