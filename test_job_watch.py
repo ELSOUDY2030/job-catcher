@@ -526,22 +526,10 @@ assert _p["c"]["status"] == _p["d"]["status"] == "new"
 _d2 = _P(_tf.mkdtemp())
 _saved = (pc_runner.QUESTIONS_FILE, pc_runner.MY_ANSWERS)
 pc_runner.QUESTIONS_FILE, pc_runner.MY_ANSWERS = _d2 / "q.md", _d2 / "a.json"
-pc_runner.QUESTIONS_FILE.write_text("# x
-
-### 1. Gender?
-- المقترح: Man
-- إجابتك: ok
-
-"
-                                    "### 2. Travel %?
-- المقترح: 25%
-- إجابتك: 10%
-
-### 3. Absher title?
-- المقترح: x
-- إجابتك: 
-",
-                                    encoding="utf-8")
+pc_runner.QUESTIONS_FILE.write_text(chr(10).join([
+    "# x", "", "### 1. Gender?", "- المقترح: Man", "- إجابتك: ok", "",
+    "### 2. Travel %?", "- المقترح: 25%", "- إجابتك: 10%", "", "### 3. Absher title?", "- المقترح: x", "- إجابتك: "]),
+    encoding="utf-8")
 assert pc_runner.import_answers() == 2
 assert json.loads(pc_runner.MY_ANSWERS.read_text(encoding="utf-8")) == {"Gender?": "Man", "Travel %?": "10%"}
 pc_runner.QUESTIONS_FILE, pc_runner.MY_ANSWERS = _saved
