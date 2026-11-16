@@ -362,6 +362,7 @@ assert pc_runner.already_logged({"url": "https://x/1", "title": "Senior Data Sci
 assert not pc_runner.already_logged({"url": "https://www.linkedin.com/jobs/view/4489445391", "title": "AI Engineer",
                                      "company": "Luxoft"}, log_demo)
 import tempfile as _tf
+import json
 import jobsite
 from pathlib import Path as _P
 assert jobsite.linkedin_kind('x data-tracking-control-name="public_jobs_apply-link-onsite"') == "easy_apply"
@@ -457,4 +458,37 @@ with _tf.TemporaryDirectory() as d:  # switch_model: 3 "No capacity" lines in on
     assert pc_runner.AGY_MODEL == "c"
     pc_runner.AGY_MODEL, pc_runner.AGY_FALLBACK[:], pc_runner.log = model, fallback, real_log
 
+# every Egypt job is auto-applied whatever its score; elsewhere the threshold decides
+cai = {"title": "AI Engineer", "company": "X", "location": "Cairo, Egypt", "url": "https://x/1", "source": "wuzzuf"}
+assert make_record(job_key(cai), cai, 2, now2, 6, egypt_any_score=True)["auto"]
+assert not make_record(job_key(cai), cai, 2, now2, 6)["auto"]
+assert not make_record(job_key(hi), {**cai, "location": "Berlin"}, 5, now2, 6, egypt_any_score=True)["auto"]
+
+# a late ✅ on a question message: answers remembered, the job is re-applied next run
+import tempfile as _tf
+import json
+from pathlib import Path as _P
+_d = _P(_tf.mkdtemp())
+saved = (pc_runner.PENDING, pc_runner.REQUEUE, pc_runner.MY_ANSWERS, pc_runner.log)
+pc_runner.PENDING, pc_runner.REQUEUE, pc_runner.MY_ANSWERS = _d / "p.json", _d / "r.json", _d / "a.json"
+pc_runner.log = lambda m: None
+pc_runner.PENDING.write_text(json.dumps({"j1": {"msg": 7, "open": [{"q": "Years of fine tuning?", "suggested": "2"}]},
+                                         "j2": {"msg": 8, "open": [{"q": "Travel %?", "suggested": "10"}]}}))
+pc_runner.telegram_bot.call, real_call = (lambda *a, **k: {}), pc_runner.telegram_bot.call
+pc_runner.late_answers([{"update_id": 1, "callback_query": {"id": "c", "data": "k:j1", "message": {"chat": {"id": 5}, "message_id": 7}}},
+                        {"update_id": 2, "message": {"chat": {"id": 5}, "text": "25", "reply_to_message": {"message_id": 8}}}],
+                       {"token": "t", "chat_id": 5})
+assert json.loads(pc_runner.REQUEUE.read_text()) == {"j1": "apply", "j2": "apply"}
+assert json.loads(pc_runner.MY_ANSWERS.read_text()) == {"Years of fine tuning?": "2", "Travel %?": "25"}
+assert json.loads(pc_runner.PENDING.read_text()) == {}
+pc_runner.telegram_bot.call = real_call
+pc_runner.PENDING, pc_runner.REQUEUE, pc_runner.MY_ANSWERS, pc_runner.log = saved
+
+# a re-applied job's new result lands once; the same result next run changes nothing
+r_ = {"k": {"id": "z1", "status": "needs_you", "done_at": "2026-11-16T10:00"}}
+assert apply_pc_results(r_, {"results": {"z1": {"status": "needs_you", "at": "2026-11-16T10:00"}}}) == 0
+assert apply_pc_results(r_, {"results": {"z1": {"status": "applied", "at": "2026-11-16T12:00"}}}) == 1
+assert r_["k"]["status"] == "applied"
+
 print("ok")
+

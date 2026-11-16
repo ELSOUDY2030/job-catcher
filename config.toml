@@ -11,7 +11,9 @@ mode = "summary"
 summary_minutes = 60
 
 [apply]  # done on YOUR PC by pc/pc_runner.py (Antigravity + the job-hunter skill), every 30 minutes
-auto_min_score = 8   # jobs scoring this or more are queued automatically (🤖); the rest get a 🚀 button
+auto_min_score = 6   # jobs scoring this or more are queued automatically (🤖); the rest get a 🚀 button
+                     # 16 Nov 2026: 8 -> 6, you asked to auto-apply most of the 👀 suitable ones too
+egypt_any_score = true  # every Egypt job that passes [filter] is auto-applied, even below min_score
 per_cycle = 10       # max applications per PC cycle: one after another ~2-4 min each, so a cycle fills its 30 min.
                      # Queue order: Egypt, Gulf, remote, Europe (score only inside a region)
 claude_review = true # answers the rule check can't verify are reviewed by `claude -p` before Submit

@@ -49,6 +49,8 @@ LOG = RECEIPTS / "runner.log"
 KEY_FILE = ROOT / ".state_key"
 ENV_FILE = HERE / ".env.json"
 FACTS = CV_DIR / "candidate_facts.md"
+PENDING = RECEIPTS / "pending_asks.json"  # questions you didn't answer in time: {job id: {msg, open}}
+REQUEUE = RECEIPTS / "requeue.json"       # {job id: "apply" | "skip"} from a late answer, for the next run
 MY_ANSWERS = RECEIPTS / "my_answers.json"   # what you answered on Telegram, reused for the same question
 AGY = shutil.which("agy") or str(Path(os.environ.get("LOCALAPPDATA", "")) / "agy" / "bin" / "agy.exe")
 OPENSSL = shutil.which("openssl") or r"C:\Program Files\Git\usr\bin\openssl.exe"
@@ -243,8 +245,71 @@ def ask_user(rec, open_qs, env, minutes):
                     answer[str(open_qs[i - 1].get("q", ""))] = a
                 done("✅ بيقدّم بإجاباتك")
                 return answer
-    done("⌛ ماردّتش: محتاجك")
+    # buttons stay: a late ✅ / ⏭ / reply is read at the start of a later run (late_answers) and re-applies
+    pending = read_json(PENDING) or {}
+    pending[rec["id"]] = {"msg": sent["message_id"], "open": open_qs}
+    PENDING.write_text(json.dumps(pending, ensure_ascii=False), encoding="utf-8")
     return None
+
+
+def asked_before(job_id):
+    """Open questions of a job asked before pending_asks.json existed: from its newest agy receipt."""
+    rdir = RECEIPTS / job_id
+    runs = (sorted(rdir.glob("answer*.json"), reverse=True) + [rdir / "fill.json"]) if rdir.exists() else []
+    old = next((r for r in (reply_json(read_json(f) or {}, "status") for f in runs) if r), None) or {}
+    return old.get("open") or [] if old.get("status") == "ask" else []
+
+
+def job_in_text(text):
+    """The job whose link is in a question message's text (index.jsonl, newest first)."""
+    rows = [json.loads(x) for x in (RECEIPTS / "index.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()] \
+        if (RECEIPTS / "index.jsonl").exists() else []
+    return next((r["id"] for r in reversed(rows) if r.get("url") and r["url"] in text), None)
+
+
+def late_answers(updates, env):
+    """✅ / ⏭ / a reply to a question message after its wait ended -> REQUEUE (+ your answers remembered).
+    Old messages (buttons already gone) work too: reply to them; the job is found by its link."""
+    pending, requeue = read_json(PENDING) or {}, read_json(REQUEUE) or {}
+    by_msg = {v["msg"]: k for k, v in pending.items()}
+    for u in updates:
+        q, m = u.get("callback_query"), u.get("message") or {}
+        reply_to = m.get("reply_to_message") or {}
+        if q and str(q["message"]["chat"]["id"]) == str(env["chat_id"]):
+            action, _, job_id = (q.get("data") or "").partition(":")
+            if action not in ("k", "n"):
+                continue
+            msg = q["message"].get("message_id")
+        elif str(m.get("chat", {}).get("id")) == str(env["chat_id"]) and reply_to:
+            job_id = by_msg.get(reply_to.get("message_id")) or job_in_text(reply_to.get("text") or "")
+            action, msg = "text", reply_to.get("message_id")
+        else:
+            continue
+        if not job_id or job_id in requeue:
+            continue
+        ask = pending.pop(job_id, None) or {"msg": msg, "open": asked_before(job_id)}
+        if not ask["open"]:
+            continue
+        got = {} if action == "k" else "skip" if action == "n" else parse_reply(m.get("text") or "", len(ask["open"]))
+        if got is None:
+            pending[job_id] = ask
+            continue
+        if got != "skip":
+            answer = {str(x.get("q", "")): str(x.get("suggested", "")) for x in ask["open"]}
+            answer.update({str(ask["open"][i - 1].get("q", "")): a for i, a in got.items()})
+            remember(answer)
+        requeue[job_id] = "skip" if got == "skip" else "apply"
+        label = "⏭ اتسابت" if got == "skip" else "✅ هيقدّم في الدورة الجاية"
+        try:
+            if q:
+                telegram_bot.call(env["token"], "answerCallbackQuery", callback_query_id=q["id"], text=label)
+            telegram_bot.call(env["token"], "editMessageReplyMarkup", chat_id=env["chat_id"], message_id=ask["msg"],
+                              reply_markup={"inline_keyboard": [[{"text": label, "callback_data": "-"}]]})
+        except Exception as e:  # an old press can't be answered any more: the requeue still counts
+            log(f"[!] telegram: {e}")
+        log(f"[i] late Telegram answer for {job_id}: {requeue[job_id]}")
+    PENDING.write_text(json.dumps(pending, ensure_ascii=False), encoding="utf-8")
+    REQUEUE.write_text(json.dumps(requeue), encoding="utf-8")
 
 
 def remember(answers):
@@ -378,6 +443,7 @@ def telegram_opens(env):
     except Exception as e:
         log(f"[!] telegram (open requests): {e}")
         return
+    late_answers([u for u in updates if u["update_id"] > last], env)
     for u in updates:
         m = u.get("message") or {}
         hit = re.match(r"^\s*(?:افتح|open)\s+(.+)", m.get("text") or "", re.I)
@@ -489,7 +555,7 @@ APPS_LOG = CV_DIR / "applications_log.md"
 START_FILE = RECEIPTS / "start_after.txt"  # jobs GitHub found before this time are never applied to
 
 
-EGYPT = re.compile(r"\b(egypt|cairo|giza|alexandria|maadi|مصر)\b", re.I)
+from sources import EGYPT  # noqa: E402  (same list GitHub uses to auto-queue every Egypt job)
 GULF = re.compile(r"\b(united arab emirates|uae|dubai|abu dhabi|sharjah|saudi arabia|saudi|ksa|riyadh|jeddah|dammam|"
                   r"khobar|qatar|doha|kuwait|bahrain|manama|oman|muscat)\b", re.I)
 REMOTE = re.compile(r"\b(remote|worldwide|anywhere|remotive|remoteok|himalayas|jobicy)\b", re.I)
@@ -790,9 +856,18 @@ def main():
         START_FILE.write_text(datetime.now(timezone.utc).isoformat(timespec="minutes"), encoding="utf-8")
     since = START_FILE.read_text(encoding="utf-8").strip() if queued is None else ""
     skip = words_regex(cfg.get("apply", {}).get("skip_titles"))
+    requeue = (read_json(REQUEUE) or {}) if queued is None else {}
+    for job_id, what in requeue.items():
+        results.pop(job_id, None)
+        if what == "skip":
+            pc["results"][job_id] = {"at": datetime.now(timezone.utc).isoformat(timespec="minutes"),
+                                     "status": "skipped", "note": "انت قلت سيبها (Telegram)"}
+    again = [{**r, "status": "queued"} for r in seen.values() if requeue.get(r["id"]) == "apply"]
+    REQUEUE.unlink(missing_ok=True)
     queue = []
-    for rec in sorted((r for r in seen.values() if r.get("status") == "queued" and r["id"] not in results),
-                      key=lambda r: (region_rank(r), -r.get("score", 0))):
+    waiting = sorted((r for r in seen.values() if r.get("status") == "queued" and r["id"] not in results
+                      and r["id"] not in requeue), key=lambda r: (region_rank(r), -r.get("score", 0)))
+    for rec in again + waiting:  # your late Telegram answers first
         reason = ("تدريب (internship): مش بنقدّم عليه" if skip and skip.search(rec["title"])  # never worth it
                   else "قديمة: اتنشرت قبل يوم تشغيل النظام" if is_old(rec, since)
                   else "موجودة في applications_log.md (اتقدّم عليها أو اتسابت قبل كده)" if already_logged(rec)

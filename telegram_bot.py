@@ -129,7 +129,7 @@ def summary(seen, since, now, cfg, pc=None, top=5, max_list=12):
         return ["", f"<b>{title} ({len(items)})</b>", *rows]
 
     lines = [f"📊 <b>ملخص من {_cairo(since)} لـ {_cairo(now.isoformat(timespec='minutes'))}</b>",
-             f"🔎 لقينا <b>{len(found)}</b> وظيفة جديدة: 🤖 {n_auto} للتقديم الأوتوماتيك (⭐ {auto_min}+) · "
+             f"🔎 لقينا <b>{len(found)}</b> وظيفة جديدة: 🤖 {n_auto} للتقديم الأوتوماتيك (⭐ {auto_min}+ وأي وظيفة في مصر) · "
              f"👀 {len(best)} مناسبين · 🔇 {n_low} ضعاف اتشالوا"]
     lines += block("✅ اتقدّم", applied, why=False)
     if needs or blocked or skipped:

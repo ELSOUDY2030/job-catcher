@@ -21,6 +21,7 @@ from pathlib import Path
 
 import scoring
 import telegram_bot
+from sources import EGYPT  # noqa: E402
 from sources import (ats, email_alerts, jobspy_boards, pc_feed, remote_boards, telegram_channels, workable,
                      words_regex, wuzzuf)
 
@@ -135,8 +136,10 @@ def prune(seen, today):
     return {key: rec for key, rec in seen.items() if rec["last_seen"] >= cutoff}
 
 
-def make_record(key, job, score, now, auto_min_score=None):
-    auto = auto_min_score is not None and score >= auto_min_score
+def make_record(key, job, score, now, auto_min_score=None, egypt_any_score=False):
+    """egypt_any_score: an Egypt job is auto-applied whatever its score (the title filter already says it's AI/ML)."""
+    egypt = egypt_any_score and bool(EGYPT.search(job.get("location") or ""))
+    auto = auto_min_score is not None and (score >= auto_min_score or egypt)
     rec = {
         "id": short_id(key),
         "title": job["title"],
@@ -167,7 +170,10 @@ def apply_pc_results(seen, pc, now=None):
     changed = 0
     for job_id, result in (pc.get("results") or {}).items():
         rec = by_id.get(job_id)
-        if rec and rec.get("status") == "queued":  # a later manual ✅/❌ from you always wins
+        # "needs_you"/"blocked" too: a job re-applied after your late Telegram answer. A manual ✅/❌ always wins.
+        # (only a NEW result for those: the same one comes back every run and must not re-announce the job)
+        if rec and (rec.get("status") == "queued"
+                    or rec.get("status") in ("needs_you", "blocked") and result.get("at") != rec.get("done_at")):
             rec.update(status=result["status"], done_at=result.get("at", ""), note=result.get("note", ""),
                        proof=result.get("proof", ""),
                        status_at=now.isoformat(timespec="minutes") if now else result.get("at", ""))
@@ -227,10 +233,12 @@ def main():
     min_score = cfg.get("score", {}).get("min_score", 0)
     ranked = sorted(((scoring.score(job, compiled, cfg), key, job) for key, job in select_new(jobs, cfg, seen).items()),
                     key=lambda item: -item[0])  # best match first
-    low = [item for item in ranked if item[0] < min_score]
-    ranked = [item for item in ranked if item[0] >= min_score]
-    summary_mode = cfg.get("telegram", {}).get("mode", "summary") == "summary"
     auto_min = cfg.get("apply", {}).get("auto_min_score")
+    egypt_any = cfg.get("apply", {}).get("egypt_any_score", False)
+    keep = lambda item: item[0] >= min_score or (egypt_any and EGYPT.search(item[2].get("location") or ""))  # noqa: E731
+    low = [item for item in ranked if not keep(item)]
+    ranked = [item for item in ranked if keep(item)]
+    summary_mode = cfg.get("telegram", {}).get("mode", "summary") == "summary"
 
     if summary_mode:
         # no message per job: everything is recorded now and reported in the hourly summary
@@ -238,13 +246,13 @@ def main():
             seen[key] = {"id": short_id(key), "status": "low", "score": score,
                          "first_seen": now.isoformat(timespec="minutes"), "last_seen": today}
         for score, key, job in ranked:
-            seen[key] = make_record(key, job, score, now, auto_min)
+            seen[key] = make_record(key, job, score, now, auto_min, egypt_any)
         print(f"[i] {len(ranked)} new jobs recorded (+{len(low)} below min_score), no per-job messages")
     else:
         cap = cfg.get("max_messages_per_run", 40)  # best first; the rest stay unsent and come back next run
         print(f"[i] {len(ranked)} new jobs" + (f", sending the best {cap} now" if len(ranked) > cap else ""))
         for score, key, job in ranked[:cap]:
-            record = make_record(key, job, score, now, auto_min)
+            record = make_record(key, job, score, now, auto_min, egypt_any)
             if dry_run:
                 print(format_job(job, score, queued=record["auto"]), end="\n\n")
                 seen[key] = record

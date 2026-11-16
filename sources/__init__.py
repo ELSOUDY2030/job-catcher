@@ -82,6 +82,9 @@ def plain(*parts, limit=3000):
     return " ".join(text.split())[:limit]
 
 
+EGYPT = re.compile(r"\b(egypt|cairo|giza|alexandria|maadi|مصر|القاهرة)\b", re.I)
+
+
 def make_job(title, company, location, url, posted, source, text=""):
     return {
         "title": html.unescape(clean(title)),  # LinkedIn sends "&#8211;" etc. in some titles
