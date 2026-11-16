@@ -49,8 +49,11 @@ SNAPSHOT_RULE = """Browser rules:
 EXTERNAL = """External application site (Workable, Greenhouse, Lever, Ashby, SmartRecruiters, Recruitee, Breezy,
 BambooHR, Pinpoint, a company form):
 a. Find and click the apply button ("Apply", "Apply for this job", "I'm interested").
-b. If the site asks to log in, create an account, verify an email/SMS code or solve a CAPTCHA: stop, status
-   "needs_you", and say which step.
+b. Sign-in / sign-up: if the site offers "Sign in with Google", "Continue with Google", "Apply with LinkedIn"
+   or "Sign in with LinkedIn", use it (pick the account shown, approve the sign-in). The browser is already
+   signed in to Google and LinkedIn, so no password is needed.
+   Only a password form, an email/SMS code or a CAPTCHA: stop, status "needs_you", and say which step.
+   Never type a password.
 c. Fill every field from the facts. Upload the CV (see the upload rule).
    Decline non-essential cookies. Untick marketing / newsletter boxes.
 d. Stop on the page where the only step left is the final "Submit" / "Submit application" / "Send"."""

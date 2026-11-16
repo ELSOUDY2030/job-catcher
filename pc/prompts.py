@@ -17,8 +17,8 @@ Link: {url}
 2. Screen the job with the "Screen" rules below. If it isn't a fit: status "skipped" with the reason.
 3. Apply with these fixed steps for this site:
 {recipe}
-4. Stop with status "needs_you" (exact step + error in "reason") on: a login, password, email/SMS code,
-   CAPTCHA, account creation or a failed upload.
+4. Stop with status "needs_you" (exact step + error in "reason") on: a password form, email/SMS code,
+   CAPTCHA or a failed upload. ("Sign in / Continue with Google" and "Apply with LinkedIn" are fine: use them.)
    Soft free-text questions (why this company / role, what excites you, your favorite feature or product, what
    you'd improve, anything else to add, a short cover note): don't stop for them. Write 1-3 plain sentences from
    the job description and the facts: general and honest, never claiming you used their product, never adding

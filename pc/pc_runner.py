@@ -64,7 +64,8 @@ EDGE = Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")) / "M
 EDGE_PROFILE = Path(os.environ.get("LOCALAPPDATA", "")) / "JobCatcher" / "EdgeProfile"
 CDP_PORT = 9341  # not 9222: Lenovo Vantage's WebView2 listens there
 LOGIN_SITES = ["https://www.linkedin.com/login", "https://secure.indeed.com/auth", "https://wuzzuf.net/login",
-               "https://www.bayt.com/en/login/"]
+               "https://www.bayt.com/en/login/",
+               "https://accounts.google.com/"]  # for "Sign in with Google" on Workday / SuccessFactors / Ashby...
 # the scheduled task runs pythonw (no console): without this every claude/agy/git call opens a black window
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 KEEP_DAYS = 30
@@ -394,6 +395,64 @@ def start_inbox(env):
     INBOX["stop"] = threading.Event()
     INBOX["thread"] = threading.Thread(target=inbox, args=(env, INBOX["stop"]), daemon=True)
     INBOX["thread"].start()
+
+
+QUESTIONS_FILE = RECEIPTS / "questions_to_answer.md"
+
+
+def stopping_questions():
+    """Every question that stopped (asked) or blocked (review) a job, not answered yet -> [{q, sug, jobs, why}]."""
+    known = {k.lower() for k in (read_json(MY_ANSWERS) or {})}
+    names = {x["id"]: x.get("company", x["id"]) for x in index_rows()}
+    found = {}
+
+    def add(q, sug, job, why):
+        q = " ".join(str(q or "").split()).rstrip("*").strip()
+        if q and q.lower() not in known:
+            e = found.setdefault(q.lower(), {"q": q, "sug": str(sug or ""), "jobs": [], "why": why})
+            if job not in e["jobs"]:
+                e["jobs"].append(job)
+
+    for d in sorted(x for x in RECEIPTS.iterdir() if x.is_dir()):
+        job = names.get(d.name, d.name)
+        for f in sorted(d.glob("*.json")):
+            j = read_json(f)
+            rep_ = reply_json(j, "status") if isinstance(j, dict) and "response" in j else None
+            for x in (rep_ or {}).get("open") or [] if (rep_ or {}).get("status") == "ask" else []:
+                add(x.get("q"), x.get("suggested"), job, "")
+        for x in (read_json(d / "audit.json") or {}).get("problems", []):
+            add(x.get("q"), x.get("a"), job, str(x.get("why", "")))
+    return list(found.values())
+
+
+def write_questions():
+    """receipts/questions_to_answer.md: write your answer under each question, then --import-answers."""
+    qs = stopping_questions()
+    out = ["# أسئلة وقفت التقديم", "",
+           "اكتب إجابتك بعد «إجابتك:». «ok» = خد المقترح. سيبها فاضية = اسأل عليها تاني على Telegram.",
+           "بعدها: `.venv\\Scripts\\python pc\\pc_runner.py --import-answers`", ""]
+    for i, e in enumerate(qs, 1):
+        out += [f"### {i}. {e['q']}", f"- الوظايف: {', '.join(e['jobs'])[:200]}", f"- المقترح: {e['sug'][:300]}"]
+        if e["why"]:
+            out.append(f"- المراجع وقفها ليه: {e['why'][:250]}")
+        out += ["- إجابتك: ", ""]
+    QUESTIONS_FILE.write_text("\n".join(out), encoding="utf-8")
+    return len(qs)
+
+
+def import_answers():
+    """Your answers in questions_to_answer.md -> my_answers.json (the brief and the review use them)."""
+    text = QUESTIONS_FILE.read_text(encoding="utf-8")
+    got = {}
+    for block in re.split(r"^### \d+\. ", text, flags=re.M)[1:]:
+        q = block.splitlines()[0].strip()
+        sug = re.search(r"^- المقترح: (.*)$", block, re.M)
+        ans = re.search(r"^- إجابتك:[ \t]*(.*)$", block, re.M)
+        a = (ans[1] if ans else "").strip()
+        if a:
+            got[q] = (sug[1].strip() if sug else "") if a.lower() in ("ok", "تمام", "موافق") else a
+    remember(got)
+    return len(got)
 
 
 def remember(answers):
@@ -1019,7 +1078,13 @@ def live(every=30):
 if __name__ == "__main__":
     if "--login" in sys.argv:  # once: sign in to the job sites in the job Edge (it keeps the logins)
         ensure_edge(LOGIN_SITES)
-        print("Sign in on each tab of the new Edge window (LinkedIn, Indeed, Wuzzuf, Bayt). Keep the window open.")
+        print("Sign in on each tab of the new Edge window (LinkedIn, Indeed, Wuzzuf, Bayt, Google). Keep it open.")
+        sys.exit()
+    if "--questions" in sys.argv:  # every question that stopped a job -> receipts/questions_to_answer.md
+        print(f"{write_questions()} questions -> {QUESTIONS_FILE}")
+        sys.exit()
+    if "--import-answers" in sys.argv:
+        print(f"{import_answers()} answers saved to {MY_ANSWERS}")
         sys.exit()
     if "--open" in sys.argv:  # reopen a stopped job's page in the job Edge: --open Adria
         print(reopen(" ".join(sys.argv[sys.argv.index("--open") + 1:])))
