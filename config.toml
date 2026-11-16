@@ -185,7 +185,13 @@ terms = ["AI Engineer", "Machine Learning", "Data Scientist", "Computer Vision",
 results_wanted = 25
 
 # Sources with runs_on = "pc" answer 403 to GitHub's servers: your PC scans them (pc/pc_runner.py)
-# and GitHub reads what it found through [agent_search]  # once a day your PC's Hydrogen reads these search pages in the job Edge (they block scripts)
+# and GitHub reads what it found through [pc_feed].
+[bayt]  # Egypt + Gulf + Arab countries. Bayt can't do OR: one call per term.
+runs_on = "pc"
+terms = ["AI engineer", "machine learning", "data scientist"]
+results_wanted = 25
+
+[agent_search]  # once a day your PC's Hydrogen reads these search pages in the job Edge (they block scripts)
 enabled = true
 every_hours = 24
 minutes = 15
@@ -200,12 +206,6 @@ pages = [
   "https://www.gulftalent.com/jobs/search?keywords=ai%20engineer",
   "https://www.gulftalent.com/jobs/search?keywords=machine%20learning",
 ]
-
-[pc_feed].
-[bayt]  # Egypt + Gulf + Arab countries. Bayt can't do OR: one call per term.
-runs_on = "pc"
-terms = ["AI engineer", "machine learning", "data scientist"]
-results_wanted = 25
 
 [pc_feed]  # jobs your PC found (Wuzzuf + Bayt), delivered via the encrypted "pc" branch
 file = "pc.json"
