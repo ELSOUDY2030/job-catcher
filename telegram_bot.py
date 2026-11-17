@@ -150,8 +150,10 @@ def summary(seen, since, now, cfg, pc=None, top=5, max_list=12):
         lines += [f"⚠️ {html.escape(warning)}"]
     if len(lines) == 2 and not found:
         lines = [lines[0], "مفيش جديد الساعة دي. البوت شغال ✔"]
-    markup = {"inline_keyboard": [[{"text": f"🚀 #{r['n']}" if r.get("n") else f"🚀 {i}", "callback_data": f"Q:{r['id']}"}
-                                   for i, r in enumerate(best[:top], 1)]]} if best else None
+    # 3 per row: 5 in one row cut the numbers on a phone ("#23…")
+    keys = [{"text": f"🚀 #{r['n']}" if r.get("n") else f"🚀 {i}", "callback_data": f"Q:{r['id']}"}
+            for i, r in enumerate(best[:top], 1)]
+    markup = {"inline_keyboard": [keys[i:i + 3] for i in range(0, len(keys), 3)]} if best else None
     return "\n".join(lines)[:4000], markup
 
 
