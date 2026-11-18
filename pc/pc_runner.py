@@ -1218,8 +1218,7 @@ def single_instance():
 
 def live(every=30):
     """`python pc/pc_runner.py --live`: a run every 30 minutes in this window, Ctrl+C stops it."""
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # Arabic notes in a cp1252 console
-    try:
+    try:  # stdout: set up at import (pythonw, as the scheduled task runs it, has none)
         while True:
             start = time.time()
             try:
