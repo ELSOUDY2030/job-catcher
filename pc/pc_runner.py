@@ -301,6 +301,13 @@ def queue_again(job_id, what):
         REQUEUE.write_text(json.dumps(q), encoding="utf-8")
 
 
+def requeue_done(job_id):
+    with LOCK:
+        q = read_json(REQUEUE) or {}
+        if q.pop(job_id, None) is not None:
+            REQUEUE.write_text(json.dumps(q), encoding="utf-8") if q else REQUEUE.unlink(missing_ok=True)
+
+
 def handle(verb, ref, rest, reply_to=""):
     """One command -> the line the bot answers. Acts through WAITING (a job waiting now) or REQUEUE (next run)."""
     if verb == "help":
@@ -1124,7 +1131,9 @@ def main():
     skip = words_regex(cfg.get("apply", {}).get("skip_titles"))
     with LOCK:
         requeue = (read_json(REQUEUE) or {}) if queued is None else {}
-        REQUEUE.unlink(missing_ok=True)
+        # an "apply" stays in the file until its job is done: per_cycle (4) used to drop the rest (5 of 9 on 18 Nov)
+        keep = {k: v for k, v in requeue.items() if v == "apply" and k in seen}
+        REQUEUE.write_text(json.dumps(keep), encoding="utf-8") if keep else REQUEUE.unlink(missing_ok=True)
     JOBS.update({str(r["n"]): r for r in seen.values() if r.get("n")})
     JOBS.update({r["id"]: r for r in seen.values() if r.get("id")})
     for job_id, what in requeue.items():
@@ -1145,6 +1154,7 @@ def main():
             pc["results"][rec["id"]] = {"at": datetime.now(timezone.utc).isoformat(timespec="minutes"),
                                         "status": "skipped", "note": reason}
             log(f"[skipped] {rec['title']} | {rec['company']} ({reason})")
+            requeue_done(rec["id"])
         else:
             queue.append(rec)
     queue = queue[: cfg.get("apply", {}).get("per_cycle", 4)]
@@ -1186,7 +1196,8 @@ def main():
                 pc["results"][rec["id"]] = finish(rec, "needs_you", f"runner error: {e}", env, RECEIPTS / rec["id"])
             close_tabs()  # nothing left open between jobs (a stopped one: its stop_url reopens it)
             save_pc(pc)  # after every job: a crash never loses a result
-            if read_json(REQUEUE) and i + 1 < len(queue):  # "قدم 111" on Telegram: it goes next, not after this cycle
+            requeue_done(rec["id"])
+            if set(read_json(REQUEUE) or {}) - {r["id"] for r in queue} and i + 1 < len(queue):  # "قدم 111" on Telegram: it goes next, not after this cycle
                 log("[i] you asked for a job on Telegram: it goes next (the rest of this cycle waits)")
                 break
 

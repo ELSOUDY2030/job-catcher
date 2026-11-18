@@ -497,6 +497,11 @@ assert json.loads(pc.MY_ANSWERS.read_text()) == {"Years of fine tuning?": "3"}
 assert pc.handle("status", "999", "").startswith("مالقيتش")
 assert "اتسابت" in pc.handle("skip", "flairs", "")                 # by company name
 assert json.loads(pc.REQUEUE.read_text())["j1"] == "skip"
+pc.requeue_done("j1")  # done jobs leave the requeue one by one; the rest wait for the next cycle
+assert json.loads(pc.REQUEUE.read_text()) == {"j2": "apply"}
+pc.requeue_done("j2"); pc.requeue_done("nope")
+assert not pc.REQUEUE.exists()
+pc.queue_again("j1", "skip")  # the lines below expect it back
 
 # a job waiting right now: the inbox hands the answer to ask_user
 calls = []

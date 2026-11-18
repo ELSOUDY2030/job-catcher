@@ -29,7 +29,7 @@ agy (Submit + سكرين) ── result.json ── Telegram
    من غيره الأسئلة اللي مش في حقايقك مش هتوصلك على Telegram، والوظيفة تتسجل "محتاجك".
 3. **Playwright:** شغّل `D:\MY\cv\cloude_CV\start_playwright_mcp.bat` وسيب Edge مفتوح ومسجّل دخول.
    علشان رفع الـ CV يشتغل: `edge://extensions` ← Playwright MCP Bridge ← Details ← فعّل **Allow access to file URLs**.
-4. **مكتبة الـ CV:** `.venv\Scripts\python -m pip install pypdf` (علشان `build_cv.py`).
+4. **مكتبة الـ CV:** `.venv\Scripts\python -m pip install pypdf websocket-client` (علشان `build_cv.py`).
 5. **التشغيل:** إما لايف قدامك (Ctrl+C يوقفه):
    `.venv\Scripts\python.exe pc\pc_runner.py --live`
    أو في الخلفية: `pc\install_task.ps1`، فبيتشغل كل 30 دقيقة. الاتنين مايشتغلوش مع بعض أبداً، لأن فيه قفل بيمنع ده.
