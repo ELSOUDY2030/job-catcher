@@ -277,6 +277,14 @@ def find_job(ref, reply_to=""):
     """'111' / a job id / a company name / None (the one job waiting for you) -> record or an error line."""
     with LOCK:
         waiting = list(WAITING) + list(read_json(PENDING) or {})
+        if not JOBS:  # a command in the first minutes of a run, before main() loaded them
+            try:
+                for r in load_seen().values():
+                    JOBS.setdefault(r["id"], r)
+                    if r.get("n"):
+                        JOBS.setdefault(str(r["n"]), r)
+            except Exception as e:
+                log(f"[!] loading jobs for a command: {e}")
     if ref is None:
         hit = re.search(r"#(\d+)", reply_to or "")
         ref = hit[1] if hit else None
@@ -315,6 +323,8 @@ def handle(verb, ref, rest, reply_to=""):
     if verb == "region":
         return region_detail(int(ref))
     rec = find_job(ref, reply_to)
+    if verb == "open" and isinstance(rec, str) and ref:  # "افتح Nawy": the newest stopped job of that name
+        return reopen(ref.lstrip("#"))
     if isinstance(rec, str):
         return rec
     jid, name = rec["id"], f"{tag(rec)} {rec.get('title', '')} · {rec.get('company', '')}"

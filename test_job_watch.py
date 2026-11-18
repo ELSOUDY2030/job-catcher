@@ -495,6 +495,9 @@ assert "اتحفظت" in pc.handle("edit", None, "1: 3")                 # the o
 assert json.loads(pc.REQUEUE.read_text()) == {"j2": "apply", "j1": "apply"}
 assert json.loads(pc.MY_ANSWERS.read_text()) == {"Years of fine tuning?": "3"}
 assert pc.handle("status", "999", "").startswith("مالقيتش")
+_reopen, pc.reopen = pc.reopen, lambda q: f"opened {q}"
+assert pc.handle(*pc.parse_command("افتح Nawy")) == "opened Nawy"  # not a numbered job: by name, from the receipts
+pc.reopen = _reopen
 assert "اتسابت" in pc.handle("skip", "flairs", "")                 # by company name
 assert json.loads(pc.REQUEUE.read_text())["j1"] == "skip"
 pc.requeue_done("j1")  # done jobs leave the requeue one by one; the rest wait for the next cycle
