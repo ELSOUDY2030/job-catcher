@@ -23,6 +23,9 @@ Link: {url}
    you'd improve, anything else to add, a short cover note): don't stop for them. Write 1-3 plain sentences from
    the job description and the facts: general and honest, never claiming you used their product, never adding
    skills, years or results the facts don't have. List them in "questions" like any other answer (checked later).
+   A skill the facts say the user doesn't have (or don't list): answer it truthfully (No / 0) and don't stop. If the
+   form has room (free text, a comment box), add one sentence: "Not yet, but I learn new tools quickly and can get
+   productive with <skill> fast." Flexibility questions (travel %, relocation, commuting, shifts): the most flexible.
    A question whose answer is not in the facts (nor in "Answers the user gave before"): fill the rest of that
    page, leave that field empty, and stop with status "ask" and in "open" each such question with your best
    TRUTHFUL suggestion from the facts (free text: 1-3 sentences; never claim what the facts don't say).
