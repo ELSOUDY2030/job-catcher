@@ -671,6 +671,33 @@ def close_tabs():
         log(f"[!] closing tabs: {e}")
 
 
+def unminimize():
+    """A minimized Edge draws nothing, so every click waits for a "stable" element until it times out
+    (6 NaukriGulf jobs in a row on 2026-11-17 21:55-22:05). The flags in ensure_edge only cover a window
+    behind others. -> True if it had to restore the window."""
+    try:
+        import websocket  # websocket-client
+        page = next(t for t in cdp("list") if t["type"] == "page")
+        ws = websocket.create_connection(cdp("version")["webSocketDebuggerUrl"], timeout=10, suppress_origin=True)
+        try:
+            def call(i, method, params):
+                ws.send(json.dumps({"id": i, "method": method, "params": params}))
+                while (r := json.loads(ws.recv())).get("id") != i:
+                    pass
+                return r.get("result") or {}
+            win = call(1, "Browser.getWindowForTarget", {"targetId": page["id"]})
+            if win.get("bounds", {}).get("windowState") != "minimized":
+                return False
+            call(2, "Browser.setWindowBounds", {"windowId": win["windowId"], "bounds": {"windowState": "normal"}})
+            log("[i] the job Edge was minimized: restored it (clicks time out in a minimized window)")
+            return True
+        finally:
+            ws.close()
+    except Exception as e:  # no Edge yet / no websocket-client: the run goes on as before
+        log(f"[!] unminimize: {e}")
+        return False
+
+
 def reopen(query):
     """'Adria' / a job id -> the newest stopped job that matches, opened in the job Edge. -> a line for you."""
     rows = [json.loads(x) for x in (RECEIPTS / "index.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
@@ -758,6 +785,14 @@ def agy(prompt, out, conversation=None, minutes=20):
     log(f"[i] agy {out.name}: {res.get('status', 'no result')} in {res.get('duration_seconds') or 0:.0f}s, "
         f"{res.get('num_turns', '?')} turns")
     switch_model(out.with_suffix(".log"), str(res.get("error") or ""))
+    if "empty conversation id" in str(res.get("error") or "") and not getattr(agy, "retrying", False):
+        log("[i] agy didn't start (backend blip): one more try in 20s")  # 2 jobs lost to it on 2026-11-17
+        time.sleep(20)
+        agy.retrying = True
+        try:
+            return agy(prompt, out, conversation, minutes)
+        finally:
+            agy.retrying = False
     return res
 
 
@@ -1144,6 +1179,7 @@ def main():
                 continue
             log(f"[>] applying: {rec['title']} | {rec['company']} | ⭐ {rec.get('score', '-')} | CV: "
                 f"{cv_file.name if cv_file else 'from cv_menu.md'}")
+            unminimize()
             try:
                 pc["results"][rec["id"]] = apply_one(rec, cfg, env, rules, cv_file)
             except Exception as e:  # one job going wrong must not stop the others
