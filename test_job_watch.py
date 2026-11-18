@@ -466,6 +466,20 @@ assert pc.parse_command("111") == ("status", "111", "")
 assert pc.parse_command("سيب 111") == ("skip", "111", "")
 assert pc.parse_command("افتح FlairsTech") == ("open", "FlairsTech", "")
 assert pc.parse_command("ازيك")[0] == "help"
+assert [pc.parse_command(x)[:2] for x in ("مصر", "الخليج", "السعودية", "ريموت", "اوروبا")] == [
+    ("region", "0"), ("region", "1"), ("region", "1"), ("region", "2"), ("region", "3")]
+_jobs, _rows = dict(pc.JOBS), pc.index_rows
+pc.JOBS.clear()
+for _r in [{"id": "e1", "n": 7, "title": "AI Engineer", "company": "Valeo", "location": "Cairo, Egypt", "status": "queued"},
+           {"id": "e2", "n": 8, "title": "ML Eng", "company": "IBM", "location": "Giza, Egypt", "status": "queued"},
+           {"id": "g1", "n": 9, "title": "DS", "company": "Aramco", "location": "Riyadh, Saudi Arabia", "status": "new"}]:
+    pc.JOBS[str(_r["n"])] = pc.JOBS[_r["id"]] = _r
+pc.index_rows = lambda: [{"id": "e2", "status": "needs_you", "note": "login wall"}]
+_rep = pc.region_report()
+assert "مصر: لقى 2" in _rep and "⏳ فاضل 1" in _rep and "✋ محتاجك 1" in _rep and "الخليج: لقى 1" in _rep, _rep
+_det = pc.handle(*pc.parse_command("مصر"))
+assert "#7 AI Engineer · Valeo" in _det and "login wall" in _det and "Aramco" not in _det, _det
+pc.JOBS.clear(); pc.JOBS.update(_jobs); pc.index_rows = _rows
 
 _d = _P(_tf.mkdtemp())
 saved = (pc.PENDING, pc.REQUEUE, pc.MY_ANSWERS, pc.RECEIPTS, pc.log)

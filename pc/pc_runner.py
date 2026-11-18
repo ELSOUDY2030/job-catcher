@@ -13,6 +13,7 @@ Needs: the job Edge profile signed in once (`pc_runner.py --login`; the runner s
 allow-list from pc/agy-cli-settings.json, pc/.env.json (pc/setup_pc.py), pc/facts_rules.toml.
 """
 import html
+from collections import Counter
 import io
 import json
 import os
@@ -237,7 +238,15 @@ LOCK = threading.RLock()
 INBOX = {}         # the running inbox thread (one per process)
 VERBS = [("apply", r"قد[ّ]?م|قدملي|apply"), ("ok", r"اعتمد|موافق|ok|approve"), ("skip", r"سيب(?:ها)?|skip"),
          ("open", r"افتح|open"), ("status", r"حالة|ايه|إيه|status")]
+REGIONS = [("🇪🇬 مصر", r"مصر|egypt"),  # same order as region_rank()
+           ("🏜 الخليج", r"(?:ال)?خليج|gulf|(?:ال)?سعودي[هةا]?|(?:ال)?[اإ]مارات|قطر|الكويت|ksa|uae"),
+           ("🌍 Remote", r"ريموت|remote"),
+           ("🇪🇺 أوروبا وغيرها", r"[اأ]وروبا|europe|الباقي|غير[هة]ا")]
+BUCKETS = [("applied", "✅ اتقدّم"), ("queued", "⏳ فاضل"), ("needs_you", "✋ محتاجك"),
+           ("rejected", "⛔ اترفض/اتساب"), ("new", "👀 برا التلقائي")]
+REPORT_EVERY = 30 * 60  # the region report on Telegram, while the runner is up
 HELP = ("الأوامر (الرقم هو #رقم الوظيفة في الملخص):\n"
+        "• مصر / الخليج / ريموت / أوروبا: كل تفاصيل المنطقة\n"
         "• قدم 111: يقدّم عليها في الدورة الجاية\n• اعتمد 111: يقدّم بالإجابات المقترحة\n"
         "• 111 2: إجابتك: يغيّر إجابة السؤال 2 ويقدّم\n• سيب 111: يسيبها\n• افتح 111: يفتحها في Edge\n"
         "• 111: حالتها وأسئلتها")
@@ -246,6 +255,9 @@ HELP = ("الأوامر (الرقم هو #رقم الوظيفة في الملخ�
 def parse_command(text):
     """Your message -> (verb, job ref or None, rest). No network."""
     t = text.strip()
+    for i, (_, words) in enumerate(REGIONS):
+        if re.fullmatch(words, t, re.I):
+            return "region", str(i), ""
     for verb, words in VERBS:
         m = re.match(rf"^(?:{words})(?:\s+#?(.+?))?\s*$", t, re.I | re.S)
         if m:
@@ -293,6 +305,8 @@ def handle(verb, ref, rest, reply_to=""):
     """One command -> the line the bot answers. Acts through WAITING (a job waiting now) or REQUEUE (next run)."""
     if verb == "help":
         return HELP
+    if verb == "region":
+        return region_detail(int(ref))
     rec = find_job(ref, reply_to)
     if isinstance(rec, str):
         return rec
@@ -346,6 +360,49 @@ def index_rows():
     return [json.loads(x) for x in f.read_text(encoding="utf-8").splitlines() if x.strip()] if f.exists() else []
 
 
+def job_states():
+    """id -> (record, bucket, note): GitHub's record, with this PC's latest receipt on top."""
+    last = {r["id"]: r for r in index_rows()}
+    kind = {"applied": "applied", "queued": "queued", "needs_you": "needs_you", "ask": "needs_you",
+            "skipped": "rejected", "blocked": "rejected"}
+    with LOCK:
+        recs = {r["id"]: r for r in JOBS.values() if r.get("id") and r.get("title")}
+    return {jid: (rec, kind.get(last.get(jid, {}).get("status") or rec.get("status"), "new"),
+                  last.get(jid, {}).get("note", "")) for jid, rec in recs.items()}
+
+
+def region_report():
+    states, today = job_states().values(), datetime.now(timezone.utc).date().isoformat()  # ponytail: UTC day
+    lines = ["📊 المناطق (كل نص ساعة). ابعت اسم المنطقة للتفاصيل، مثلاً: مصر"]
+    for i, (name, _) in enumerate(REGIONS):
+        rows = [x for x in states if region_rank(x[0]) == i]
+        if rows:
+            c = Counter(b for _, b, _ in rows)
+            new = sum(r.get("first_seen", "")[:10] == today for r, _, _ in rows)
+            lines.append(f"\n{name}: لقى {len(rows)} (النهارده {new})\n"
+                         + " | ".join(f"{label} {c[b]}" for b, label in BUCKETS if c[b]))
+    return "\n".join(lines)
+
+
+def region_detail(i, per_list=12):
+    rows = sorted((x for x in job_states().values() if region_rank(x[0]) == i),
+                  key=lambda x: x[0].get("first_seen", ""), reverse=True)
+    if not rows:
+        return f"{REGIONS[i][0]}: مافيش وظايف لسه."
+    c = Counter(b for _, b, _ in rows)
+    out = [f"{REGIONS[i][0]}: لقى {len(rows)}\n" + " | ".join(f"{label} {c[b]}" for b, label in BUCKETS if c[b])]
+    for b, label in BUCKETS:
+        hits = [x for x in rows if x[1] == b]
+        if hits:
+            out.append(f"\n{label} ({len(hits)}):")
+            for r, _, note in hits[:per_list]:
+                why = f"\n   ↳ {note[:90]}" if note and b in ("needs_you", "rejected") else ""
+                out.append(f"• {tag(r)} {r.get('title', '')[:55]} · {r.get('company', '')[:30]}{why}")
+            if len(hits) > per_list:
+                out.append(f"  … و{len(hits) - per_list} كمان")
+    return "\n".join(out)[:4000]
+
+
 def on_update(u, env):
     """One Telegram update from your chat -> handle() -> the bot's answer."""
     q, m = u.get("callback_query"), u.get("message") or {}
@@ -372,7 +429,14 @@ def inbox(env, stop, every=3):
     confirms anything, so GitHub's run still gets every 🚀 press; ceiling: 100 unconfirmed updates."""
     last_file = RECEIPTS / "tg_open_last.txt"
     last = int(last_file.read_text() or 0) if last_file.exists() else None
+    next_report = time.time() + 60  # the first one once the run has loaded the jobs
     while not stop.wait(every):
+        if time.time() >= next_report and JOBS:
+            next_report = time.time() + REPORT_EVERY
+            try:
+                telegram_bot.call(env["token"], "sendMessage", chat_id=str(env["chat_id"]), text=region_report())
+            except Exception as e:
+                log(f"[!] region report: {e}")
         try:
             updates = telegram_bot.call(env["token"], "getUpdates", timeout=0,
                                         allowed_updates=["callback_query", "message"])
