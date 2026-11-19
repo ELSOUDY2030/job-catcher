@@ -49,6 +49,7 @@ def check(questions, rules):
             ok += 1
         elif YES_NO.match(a) and not (_has(rule["a"], "yes") or _has(rule["a"], "no")):
             unsure.append({"q": q, "a": a})  # "Do you have AI experience?" only shares words with a years / degree rule
-        else:
-            problems.append({"q": q, "a": a, "why": rule.get("why", "doesn't match candidate_facts.md")})
+        else:  # ponytail: keyword rules can't read "Nein", "3-5 years" or a Device Type question (25 false
+            # blocks on 18 Nov 2026): the reviewer judges the meaning, with the rule's expectation as a hint
+            unsure.append({"q": q, "a": a, "hint": rule.get("why", "")})
     return {"problems": problems, "unsure": unsure, "ok": ok}

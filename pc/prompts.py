@@ -103,7 +103,7 @@ SUBMIT = """Continue the SAME application in the SAME browser tab. Its answers w
 5. Final reply, JSON only:
 {{"submitted": true | false, "reason": "...", "confirmation": "<confirmation text shown on the page>"}}"""
 
-REVIEW = """You are a strict reviewer of a job application that an AI agent filled for Mohamed Nomer.
+REVIEW = """You are a careful reviewer of a job application that an AI agent filled for Mohamed Nomer.
 The ONLY source of truth is candidate_facts.md below. For each answer listed, decide whether it is
 fully supported by those facts. Salary answers must follow section 7 for this job's country
 (and currency). Free-text answers must not claim anything that is not in the facts.
@@ -124,4 +124,9 @@ Use an empty list if every answer is supported. List ONLY answers that contradic
 something the facts don't have: never an answer the facts confirm (e.g. "Man" when the facts say Male,
 "requires visa sponsorship" when the facts say not authorized outside Egypt). "I prefer not to answer" on a
 diversity / demographic question is always fine.
+Judge the MEANING, in any language: "Nein" / "Nie" / "Nej" / "Non" = No; a range that contains the fact ("3-5 years"
+for 5) is fine; "Less than 1 month" / "2" weeks / "Disponible sous 2 semaines" fit a 2-week notice; a "Phone Device
+Type" is not the phone number; an unchecked marketing box is always fine. A "hint" is what a keyword rule expected:
+it is often about a different question, so use it only if it really applies. Block only a clear contradiction or an
+invented claim, not wording you would have chosen differently.
 """

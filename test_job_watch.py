@@ -338,8 +338,8 @@ v = audit.check([
     {"q": "Stack?", "a": "C#/.NET"},                                            # problem (never_claim, symbol edge)
     {"q": "Do you have 2+ years of Python?", "a": "Yes"},                        # unsure (yes/no on a value rule)
 ], rules_demo)
-assert v["ok"] == 2 and len(v["problems"]) == 3 and len(v["unsure"]) == 3, v
-assert {p["why"] for p in v["problems"]} >= {"not outside Egypt"}
+assert v["ok"] == 2 and len(v["problems"]) == 2 and len(v["unsure"]) == 4, v  # never_claim blocks; a rule mismatch -> reviewer
+assert {x.get("hint") for x in v["unsure"]} >= {"not outside Egypt"}
 assert review.parse('Sure!\n{"problems": []}\nDone') == []
 assert review.parse('{"problems": [{"q": "s", "a": "1", "why": "x"}]}')[0]["why"] == "x"
 assert review.parse("no json here") is None and review.parse('{"other": 1}') is None

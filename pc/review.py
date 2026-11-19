@@ -85,6 +85,8 @@ def review(record, unsure, facts_file, timeout=300):
                            facts=Path(facts_file).read_text(encoding="utf-8"),
                            answers=json.dumps(unsure, ensure_ascii=False, indent=1))
     obj, who = ask(prompt, timeout=timeout)
+    if obj is None or not isinstance(obj.get("problems"), list):  # 8 jobs blocked by this alone on 18 Nov 2026
+        obj, who = ask(prompt, claude_model="claude-sonnet-5-5", timeout=timeout, force_claude=True)
     if obj is None or not isinstance(obj.get("problems"), list):
         raise RuntimeError(f"review: {who}")
     if obj["problems"] and who == "Gemini":  # Gemini blocked Wise on 3 answers the facts confirm (14 Nov 2026):
